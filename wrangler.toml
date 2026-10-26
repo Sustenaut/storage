@@ -1,0 +1,11 @@
+# The Cloudflare Pages project behind storage.sustenaut.eu: public/ holds
+# its one page, functions/ the service (src/storage.js), and STORAGE is
+# its R2 bucket. CLEAN_TOKEN is a secret of the project, set once with
+# `npx wrangler pages secret put CLEAN_TOKEN --project-name sustenaut-storage`.
+name = "sustenaut-storage"
+pages_build_output_dir = "public"
+compatibility_date = "2026-10-01"
+
+[[r2_buckets]]
+binding = "STORAGE"
+bucket_name = "sustenaut-storage"

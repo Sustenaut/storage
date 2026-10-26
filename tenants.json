@@ -1,0 +1,7 @@
+{
+  "visit-ee": {
+    "repository": "schryer/visit-ee",
+    "origins": ["https://temp.schryer.eu", "https://visit.ee"],
+    "in_use": "https://temp.schryer.eu/photos.json"
+  }
+}

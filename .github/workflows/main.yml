@@ -1,0 +1,33 @@
+# Written by `pubkit sync` from the ci block of pubkit.json. Do not edit:
+# change pubkit.json and run `pubkit sync`.
+name: main
+
+on:
+  push: { branches: [main] }
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: ci
+    uses: schryer/pubkit/.github/workflows/job-service-checks.yml@v0.14.2
+    with: {"shellcheck": "with-secrets"}
+
+  tests:
+    name: ci
+    uses: schryer/pubkit/.github/workflows/job-service-tests.yml@v0.14.2
+    with: {"setup": "npm ci", "test": "npm test"}
+
+  # The one check a ruleset requires: it passes only when every job
+  # above succeeded. None of them is ever skipped for not being asked for.
+  passed:
+    name: ci / passed
+    if: always()
+    needs: [checks, tests]
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "$RESULTS"
+          echo "$RESULTS" | jq -e 'all(.[]; .result == "success")' > /dev/null
+        env: { RESULTS: '${{ toJSON(needs) }}' }
