@@ -1,0 +1,11 @@
+{
+  "name": "sustenaut-storage",
+  "version": "0.1.0",
+  "description": "storage.sustenaut.eu: photos for the sustenaut.eu sites, in Cloudflare R2.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  }
+}

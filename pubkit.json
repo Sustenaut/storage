@@ -1,0 +1,17 @@
+{
+  "kind": "service",
+  "bin": "storage",
+  "ci": {
+    "with": {
+      "setup": "npm ci",
+      "test": "npm test",
+      "shellcheck": "with-secrets"
+    }
+  },
+  "protect": {
+    "checks": [
+      "ci / passed"
+    ],
+    "tags": false
+  }
+}

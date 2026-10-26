@@ -1,0 +1,39 @@
+# Publishes storage.sustenaut.eu to Cloudflare Pages on every push to main:
+# public/ and the functions in functions/, with the R2 bucket that
+# wrangler.toml binds.
+#
+# The Pages project is the storage site in schryer/business-plan's
+# pubkit.json. The token is the Actions secret CLOUDFLARE_GITHUB_API_TOKEN,
+# which can only edit Pages; the account is the Actions variable
+# CLOUDFLARE_ACCOUNT_ID. It stays off until those and the bucket exist
+# (README.md, "Setting it up"): then set the repository variable
+# STORAGE_DEPLOY to "on".
+name: deploy
+
+on:
+  push: { branches: [main] }
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: vars.STORAGE_DEPLOY == 'on'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: npm ci
+      - run: npm test
+      # wrangler pages deploy, run from the repository's root, takes
+      # functions/ and wrangler.toml from there.
+      - uses: schryer/pubkit/actions/deploy-static@v0.14.0
+        with:
+          dir: public
+          cloudflare-api-token: ${{ secrets.CLOUDFLARE_GITHUB_API_TOKEN }}
+          cloudflare-account-id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          cloudflare-project: sustenaut-storage
