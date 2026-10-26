@@ -19,7 +19,7 @@ part of the bucket:
 |---|---|
 | `GET /<tenant>/p/<id>/<width>.jpg` (or `.webp`) | A photo, cached for good: the id is a hash of the photo's content, so a photo never changes. |
 | `POST /<tenant>/upload` | Stores a photo from the tenant's editor (multipart fields named `<width>.jpg` and `<width>.webp`, made in the browser) and answers its description: `{id, width, height, widths, formats}`. |
-| `POST /_clean` | Deletes the photos each tenant no longer uses. |
+| `POST /_clean` | Deletes the photos each tenant no longer uses, at most once a day. |
 
 An upload has to carry the editor's GitHub token
 (`Authorization: Bearer …`), and it is stored only if that token can push to
@@ -33,6 +33,11 @@ address (`{"photos": ["<id>", …]}`, which the site's build writes) and
 deletes the others, but only once they are 30 days old. That way a photo
 waiting in an open pull request survives. A tenant whose list can't be
 read, or comes back empty while it has photos, is left alone.
+
+The clean-up needs no secret, so there is no token to keep or rotate. It
+does only what the sites' own public lists say, and the service runs it at
+most once every 20 hours, however often `/_clean` is called. Asking more
+often gets `429`.
 
 ### Adding a site
 
@@ -69,12 +74,7 @@ bucket.
    uses) and the variable `CLOUDFLARE_ACCOUNT_ID`. If the deploy says the
    token can't bind the bucket, give the token "Workers R2 Storage: Read"
    as well.
-4. **The clean-up's token.** Make a random value (`openssl rand -hex 32`).
-   Set it as the Pages project's secret:
-   `npx wrangler pages secret put CLEAN_TOKEN --project-name sustenaut-storage`.
-   Then set the same value as this repository's Actions secret
-   `STORAGE_CLEAN_TOKEN`.
-5. **Turn it on.** Set the repository variable `STORAGE_DEPLOY` to `on`.
+4. **Turn it on.** Set the repository variable `STORAGE_DEPLOY` to `on`.
    The next push to main deploys.
-6. **Protect main.** Run `pubkit protect schryer/storage` as a repository
+5. **Protect main.** Run `pubkit protect schryer/storage` as a repository
    admin.

@@ -20,7 +20,7 @@ function bucket() {
     },
     async get(key) {
       const o = objects.get(key);
-      return o && { ...o, body: o.bytes };
+      return o && { ...o, body: o.bytes, text: async () => (typeof o.bytes === "string" ? o.bytes : new TextDecoder().decode(o.bytes)) };
     },
     async list({ prefix }) {
       return { objects: [...objects.values()].filter((o) => o.key.startsWith(prefix)), truncated: false };
@@ -38,7 +38,7 @@ const call = (request) => handle(request, env, TENANTS);
 
 let env, realFetch, sitePhotos, canPush;
 beforeEach(() => {
-  env = { STORAGE: bucket(), CLEAN_TOKEN: "sweep" };
+  env = { STORAGE: bucket() };
   sitePhotos = [];
   canPush = true;
   realFetch = globalThis.fetch;
@@ -114,9 +114,10 @@ test("a JPEG's size comes from its frame header", () => {
   assert.deepEqual(jpegSize(jpeg(1600, 1067)), { width: 1600, height: 1067 });
 });
 
-test("only the clean-up's token starts it, and other sites' paths are unknown", async () => {
-  assert.equal((await call(new Request("https://storage.example/_clean", { method: "POST" }))).status, 401);
-  assert.equal((await call(new Request("https://storage.example/_clean", { method: "POST", headers: { Authorization: "Bearer sweep" } }))).status, 200);
+test("the clean-up runs once a day however often it is called, and other sites' paths are unknown", async () => {
+  sitePhotos = ["aaaaaaaaaaaaaaaa"];
+  assert.equal((await call(new Request("https://storage.example/_clean", { method: "POST" }))).status, 200);
+  assert.equal((await call(new Request("https://storage.example/_clean", { method: "POST" }))).status, 429);
   assert.equal((await call(new Request("https://storage.example/elsewhere/p/aaaaaaaaaaaaaaaa/480.jpg"))).status, 404);
   assert.equal((await call(new Request("https://storage.example/visit-ee/p/aaaaaaaaaaaaaaaa/480.jpg"))).status, 404);
 });
