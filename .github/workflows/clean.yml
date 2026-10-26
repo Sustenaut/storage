@@ -1,7 +1,7 @@
 # Nightly: asks storage.sustenaut.eu to delete the photos no site uses any
-# more (src/storage.js, clean). The token is the Actions secret
-# STORAGE_CLEAN_TOKEN, the same value as the Pages project's CLEAN_TOKEN.
-# It stays off with the deploy, until STORAGE_DEPLOY is "on".
+# more (src/storage.js, clean). It needs no secret: the service runs a
+# clean-up at most once a day, whoever asks. It stays off with the deploy,
+# until STORAGE_DEPLOY is "on".
 name: clean
 
 on:
@@ -18,8 +18,6 @@ jobs:
     steps:
       - name: Clean up
         run: |
-          curl -fsS -X POST -H "Authorization: Bearer $TOKEN" https://storage.sustenaut.eu/_clean | tee report.json
+          curl -fsS -X POST https://storage.sustenaut.eu/_clean | tee report.json
           echo
           jq -r 'to_entries[] | "\(.key): \(.value.deleted // [] | length) deleted\(if .value.skipped then ", skipped: \(.value.skipped)" else "" end)"' report.json
-        env:
-          TOKEN: ${{ secrets.STORAGE_CLEAN_TOKEN }}
