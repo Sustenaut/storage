@@ -3,5 +3,14 @@
     "repository": "schryer/visit-ee",
     "origins": ["https://temp.schryer.eu", "https://visit.ee"],
     "in_use": "https://temp.schryer.eu/photos.json"
+  },
+  "opportunity": {
+    "repository": "schryer/business-plan",
+    "origins": ["https://opportunity.sustenaut.eu"],
+    "in_use": "https://opportunity.sustenaut.eu/storage-in-use.json",
+    "files": {
+      "types": ["pdf", "pptx", "docx", "png", "jpg", "svg", "csv", "xlsx"],
+      "max_bytes": 26214400
+    }
   }
 }
