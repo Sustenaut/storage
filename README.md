@@ -1,6 +1,6 @@
 # storage
 
-storage.sustenaut.eu keeps photos (and later other files) for the sites
+storage.sustenaut.eu keeps photos and other files for the sites
 built on sustenaut.eu in a Cloudflare R2 bucket and serves them. The files
 then don't sit in each site's git repository or count toward its Pages
 deployment, which allows 20,000 files.
@@ -19,20 +19,56 @@ part of the bucket:
 |---|---|
 | `GET /<tenant>/p/<id>/<width>.jpg` (or `.webp`) | A photo, cached for good: the id is a hash of the photo's content, so a photo never changes. |
 | `POST /<tenant>/upload` | Stores a photo from the tenant's editor (multipart fields named `<width>.jpg` and `<width>.webp`, made in the browser) and answers its description: `{id, width, height, widths, formats}`. |
-| `POST /_clean` | Deletes the photos each tenant no longer uses, at most once a day. |
+| `GET /<tenant>/f/<id>/<name>` | A file, cached for good: the id is the SHA-256 of its content. |
+| `POST /<tenant>/files` | Stores one file (multipart field `file`, optional `name`, `label` such as "OPP-02 market report v3", `kept=true`) for a tenant with `files`, and answers `{id, name, url, type, size, label, kept}`. |
+| `POST /_clean` | Deletes the photos and files each tenant no longer uses, at most once a day. Kept files are never deleted. |
 
 An upload has to carry the editor's GitHub token
 (`Authorization: Bearer …`), and it is stored only if that token can push to
 the tenant's `repository`. The person who may change the site's content is
-the one who may add its photos. Only the tenant's `origins` (and
+the one who may add its photos.
+
+A service can upload with its GitHub App's installation token (`ghs_…`)
+instead. Such a token can't say who its user is, so the check is different:
+the app's installation must list the tenant's repository with push
+(contents: write). The file is recorded as uploaded by `github-app`, and
+the `for` field (the person the service uploads for) is kept with it. A
+person's token can't set `for`.
+
+Only the tenant's `origins` (and
 `http://localhost`, for development) get CORS headers for uploads.
+
+### Files
+
+A tenant that has `files` in `tenants.json` can store files besides photos:
+
+| `files` key | What |
+|---|---|
+| `types` | The extensions it takes, from pdf, pptx, docx, xlsx, csv, txt, png, jpg, jpeg, webp, gif and svg. |
+| `max_bytes` | The largest file, 25 MB when not given (Pages takes at most 100 MB a request). |
+
+A file is checked by its extension and, where the format has one, by its
+first bytes (`%PDF-`, PNG, JPEG and so on; docx, pptx and xlsx are zip
+archives; csv, txt and svg must be text, and an svg must contain an `<svg`
+tag). It is served with its type, as an attachment for Office files and
+csv, and with a sandboxing Content-Security-Policy, so an SVG's scripts
+never run on this site. A file's address is a capability: anyone who has
+it can read the file.
+
+**Kept files** are uploaded with `kept=true`: the client documents that
+went out. The clean-up never deletes them. Uploading the same file again
+without `kept` doesn't unkeep it.
+
+### The clean-up
 
 The clean-up runs nightly (`.github/workflows/clean.yml`). For each
 tenant, it reads the photos the site uses from the tenant's `in_use`
-address (`{"photos": ["<id>", …]}`, which the site's build writes) and
-deletes the others, but only once they are 30 days old. That way a photo
+address (`{"photos": ["<id>", …], "files": ["<id>", …]}`, which the site
+writes) and deletes the others, but only once they are 30 days old. That way a photo
 waiting in an open pull request survives. A tenant whose list can't be
-read, or comes back empty while it has photos, is left alone.
+read, or comes back empty while it has photos, is left alone. Files are
+treated the same way, except kept ones. A list without a `files` key never
+has files deleted.
 
 The clean-up needs no secret, so there is no token to keep or rotate. It
 does only what the sites' own public lists say, and the service runs it at
@@ -50,6 +86,9 @@ Add it to `tenants.json`:
   "in_use": "https://temp.schryer.eu/photos.json"
 }
 ```
+
+Add `"files": {"types": ["pdf", "png"], "max_bytes": 26214400}` for a site
+that keeps files too, like `opportunity` (opportunity.sustenaut.eu).
 
 ## Working on it
 
