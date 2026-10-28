@@ -12,5 +12,14 @@
       "types": ["pdf", "pptx", "docx", "png", "jpg", "svg", "csv", "xlsx"],
       "max_bytes": 26214400
     }
+  },
+  "sources": {
+    "repository": "schryer/business-plan",
+    "origins": [],
+    "files": {
+      "types": ["pdf", "cbor", "json"],
+      "max_bytes": 26214400,
+      "kept": true
+    }
   }
 }

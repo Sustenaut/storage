@@ -262,3 +262,54 @@ test("the opportunity tenant takes the files the opportunity site needs", () => 
   assert.deepEqual(t.files.types, ["pdf", "pptx", "docx", "png", "jpg", "svg", "csv", "xlsx"]);
   assert.equal(REAL_TENANTS["visit-ee"].files, undefined); // photos only
 });
+
+// --- Sources -----------------------------------------------------------------
+
+const SOURCES = { repository: "schryer/business-plan", origins: [], files: { types: ["pdf", "cbor", "json"], max_bytes: 1000, kept: true } };
+const sources = (token, bytes, fields) => {
+  const form = new FormData();
+  form.append("file", new Blob([bytes]), "file.bin");
+  for (const [k, v] of Object.entries(fields)) form.append(k, v);
+  return handle(new Request("https://storage.example/sources/files", { method: "POST", body: form, headers: { Authorization: `Bearer ${token}` } }), env, { sources: SOURCES });
+};
+// A publet object starts with a CBOR map: 0xa0 to 0xbf.
+const cbor = () => new Uint8Array([0xa3, 0x61, 0x76, 0x01, 0x61, 0x6b, 0x02, 0x61, 0x64, 0x03]);
+
+test("a sources tenant keeps papers, publet objects and their index, all kept", async () => {
+  const object = await (await sources("good", cbor(), { name: "bafy-claim.cbor" })).json();
+  assert.equal(object.kept, true);
+  assert.equal(env.STORAGE.objects.get(`sources/f/${object.id}/bafy-claim.cbor`).customMetadata.kept, "true");
+  const index = await (await sources("good", new TextEncoder().encode('{"e.pump": "bafy"}'), { name: "index.json" })).json();
+  assert.equal(index.kept, true);
+  assert.equal((await sources("good", pdf(), { name: "diehl-cheng-2025.pdf" })).status, 200);
+
+  const got = await handle(new Request(`https://storage.example${object.url}`), env, { sources: SOURCES });
+  assert.equal(got.headers.get("Content-Type"), "application/cbor");
+  assert.match(got.headers.get("Content-Disposition"), /^attachment/);
+  const shown = await handle(new Request(`https://storage.example${index.url}`), env, { sources: SOURCES });
+  assert.equal(shown.headers.get("Content-Type"), "application/json");
+  assert.match(shown.headers.get("Content-Disposition"), /^inline/);
+});
+
+test("a cbor file must be a CBOR map and a json file must parse", async () => {
+  assert.equal((await sources("good", new Uint8Array([]), { name: "empty.cbor" })).status, 400);
+  assert.equal((await sources("good", new Uint8Array([0x83, 1, 2, 3]), { name: "array.cbor" })).status, 400); // an array, not a map
+  assert.equal((await sources("good", new TextEncoder().encode("{not json"), { name: "bad.json" })).status, 400);
+  assert.equal((await sources("good", new Uint8Array([0x7b, 0xff, 0x7d]), { name: "bytes.json" })).status, 400); // not UTF-8
+  assert.equal((await sources("good", cbor(), { name: "page.html" })).status, 415);
+  assert.equal(env.STORAGE.objects.size, 0);
+});
+
+test("a tenant without an in_use list has nothing cleaned", async () => {
+  const day = 86400e3, now = Date.parse("2026-12-01T00:00:00Z");
+  await env.STORAGE.put(`sources/f/${"a".repeat(64)}/old.cbor`, cbor(), { customMetadata: { uploaded: new Date(now - 400 * day).toISOString(), kept: "false" } });
+  assert.match((await clean(env, { sources: SOURCES }, now)).sources.skipped, /no in_use/);
+  assert.equal(env.STORAGE.objects.size, 1);
+});
+
+test("the sources tenant takes papers and publet objects for business-plan, kept and never cleaned", () => {
+  const t = REAL_TENANTS.sources;
+  assert.equal(t.repository, "schryer/business-plan");
+  assert.equal(t.in_use, undefined);
+  assert.deepEqual(t.files, { types: ["pdf", "cbor", "json"], max_bytes: 26214400, kept: true });
+});
