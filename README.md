@@ -44,20 +44,30 @@ A tenant that has `files` in `tenants.json` can store files besides photos:
 
 | `files` key | What |
 |---|---|
-| `types` | The extensions it takes, from pdf, pptx, docx, xlsx, csv, txt, png, jpg, jpeg, webp, gif and svg. |
+| `types` | The extensions it takes, from pdf, pptx, docx, xlsx, csv, txt, png, jpg, jpeg, webp, gif, svg, cbor and json. |
 | `max_bytes` | The largest file, 25 MB when not given (Pages takes at most 100 MB a request). |
+| `kept` | `true` keeps every upload, as if each were sent with `kept=true`. |
 
 A file is checked by its extension and, where the format has one, by its
 first bytes (`%PDF-`, PNG, JPEG and so on; docx, pptx and xlsx are zip
 archives; csv, txt and svg must be text, and an svg must contain an `<svg`
-tag). It is served with its type, as an attachment for Office files and
-csv, and with a sandboxing Content-Security-Policy, so an SVG's scripts
+tag; a cbor file must be a CBOR map, as every publet object is, and a json
+file must parse as JSON). It is served with its type, as an attachment for Office files, csv
+and cbor, and with a sandboxing Content-Security-Policy, so an SVG's scripts
 never run on this site. A file's address is a capability: anyone who has
 it can read the file.
 
 **Kept files** are uploaded with `kept=true`: the client documents that
 went out. The clean-up never deletes them. Uploading the same file again
 without `kept` doesn't unkeep it.
+
+### The tenants
+
+| Tenant | Site | Keeps |
+|---|---|---|
+| `visit-ee` | visit.ee | photos |
+| `opportunity` | opportunity.sustenaut.eu | photos, and pdf, pptx, docx, png, jpg, svg, csv and xlsx files |
+| `sources` | schryer/business-plan's sources corpus | papers (pdf) whose licence allows it, signed publet objects (cbor, named by their SHA-256 like any file) and their indexes (json); all kept, and with no `in_use` list nothing is ever cleaned |
 
 ### The clean-up
 
@@ -66,7 +76,8 @@ tenant, it reads the photos the site uses from the tenant's `in_use`
 address (`{"photos": ["<id>", …], "files": ["<id>", …]}`, which the site
 writes) and deletes the others, but only once they are 30 days old. That way a photo
 waiting in an open pull request survives. A tenant whose list can't be
-read, or comes back empty while it has photos, is left alone. Files are
+read, or comes back empty while it has photos, is left alone, and so is a
+tenant without `in_use`. Files are
 treated the same way, except kept ones. A list without a `files` key never
 has files deleted.
 

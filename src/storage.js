@@ -31,8 +31,9 @@
 // pull request survives. .github/workflows/clean.yml calls it nightly. It
 // needs no secret: it only does what the sites' own public lists say, and
 // runs at most once in CLEAN_EVERY_HOURS however often it is called. Kept
-// files (client documents that went out) are never deleted, and a tenant
-// whose list has no "files" key never has files deleted.
+// files (client documents that went out) are never deleted, a tenant
+// whose list has no "files" key never has files deleted, and a tenant
+// without an in_use list has nothing deleted.
 
 import TENANTS from "../tenants.json" with { type: "json" };
 
@@ -65,7 +66,19 @@ export const FILE_TYPES = {
   docx: { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", inline: false, check: isZip },
   pptx: { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation", inline: false, check: isZip },
   xlsx: { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", inline: false, check: isZip },
+  // A publet object: its id is already its content's SHA-256, so the check is only that it is one, a CBOR map.
+  cbor: { type: "application/cbor", inline: false, check: (b) => b.length > 0 && b[0] >= 0xa0 && b[0] <= 0xbf },
+  json: { type: "application/json", inline: true, check: isJson },
 };
+
+function isJson(b) {
+  try {
+    JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(b));
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // env: STORAGE, the R2 bucket.
 // tenants: tenants.json, or the tests' own.
@@ -182,7 +195,8 @@ export async function uploadFile(request, env, tenantId, tenant) {
   if (bytes.length > max) throw status(413, `${name} is over ${max} bytes`);
   if (!kind.check(bytes)) throw status(400, `${name} is not a .${ext} file`);
   const label = String(form.get("label") || "").trim().slice(0, LABEL_CHARS);
-  const kept = form.get("kept") === "true";
+  // A tenant whose files are all kept (sources: papers and signed objects) keeps every upload.
+  const kept = tenant.files.kept === true || form.get("kept") === "true";
 
   const id = await hash(bytes, 32);
   const key = `${tenantId}/f/${id}/${name}`;
@@ -243,6 +257,10 @@ function extension(name) {
 export async function clean(env, tenants = TENANTS, now = Date.now()) {
   const report = {};
   for (const [tenantId, tenant] of Object.entries(tenants)) {
+    if (!tenant.in_use) {
+      report[tenantId] = { skipped: "no in_use list: nothing is cleaned" };
+      continue;
+    }
     const response = await fetch(tenant.in_use).catch((err) => ({ ok: false, status: err.message }));
     if (!response.ok) {
       report[tenantId] = { skipped: `${tenant.in_use}: ${response.status}` };
