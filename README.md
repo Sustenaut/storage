@@ -126,5 +126,5 @@ bucket.
    as well.
 4. **Turn it on.** Set the repository variable `STORAGE_DEPLOY` to `on`.
    The next push to main deploys.
-5. **Protect main.** Run `pubkit protect schryer/storage` as a repository
+5. **Protect main.** Run `pubkit protect Sustenaut/storage` as a repository
    admin.
