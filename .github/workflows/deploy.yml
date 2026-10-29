@@ -31,7 +31,7 @@ jobs:
       - run: npm test
       # wrangler pages deploy, run from the repository's root, takes
       # functions/ and wrangler.toml from there.
-      - uses: schryer/pubkit/actions/deploy-static@v0.14.0
+      - uses: Sustenaut/pubkit/actions/deploy-static@44056227327a7af7f344e008fb72106b2eae4eca # v0.16.0
         with:
           dir: public
           cloudflare-api-token: ${{ secrets.CLOUDFLARE_GITHUB_API_TOKEN }}
