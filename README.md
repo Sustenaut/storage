@@ -35,6 +35,10 @@ the app's installation must list the tenant's repository with push
 the `for` field (the person the service uploads for) is kept with it. A
 person's token can't set `for`.
 
+A GitHub Actions job can upload with its OpenID Connect token instead,
+when the tenant's `write` list names it (see "Private tenants" below for
+how). That takes no secret at all.
+
 Only the tenant's `origins` (and
 `http://localhost`, for development) get CORS headers for uploads.
 
@@ -44,7 +48,7 @@ A tenant that has `files` in `tenants.json` can store files besides photos:
 
 | `files` key | What |
 |---|---|
-| `types` | The extensions it takes, from pdf, pptx, docx, xlsx, csv, txt, png, jpg, jpeg, webp, gif, svg, cbor and json. |
+| `types` | The extensions it takes, from pdf, pptx, docx, xlsx, csv, txt, png, jpg, jpeg, webp, gif, svg, cbor, json and gz. |
 | `max_bytes` | The largest file, 25 MB when not given (Pages takes at most 100 MB a request). |
 | `kept` | `true` keeps every upload, as if each were sent with `kept=true`. |
 
@@ -52,9 +56,9 @@ A file is checked by its extension and, where the format has one, by its
 first bytes (`%PDF-`, PNG, JPEG and so on; docx, pptx and xlsx are zip
 archives; csv, txt and svg must be text, and an svg must contain an `<svg`
 tag; a cbor file must be a CBOR map, as every publet object is, and a json
-file must parse as JSON). It is served with its type, as an attachment for Office files, csv
+file must parse as JSON, and a gz file must start as gzip does). It is served with its type, as an attachment for Office files, csv
 and cbor, and with a sandboxing Content-Security-Policy, so an SVG's scripts
-never run on this site. A file's address is a capability: anyone who has
+never run on this site. A public tenant's file address is a capability: anyone who has
 it can read the file.
 
 **Kept files** are uploaded with `kept=true`: the client documents that
@@ -67,7 +71,53 @@ without `kept` doesn't unkeep it.
 |---|---|---|
 | `visit-ee` | visit.ee | photos |
 | `opportunity` | opportunity.sustenaut.eu | photos, and pdf, pptx, docx, png, jpg, svg, csv and xlsx files |
+| `publications` (private) | pub.sustenaut.eu's publet objects | each publication release's `publication-0-objects.tar.gz`, uploaded by Sustenaut/business-plan's main and read by Sustenaut/pub-site; all kept |
 | `sources` | schryer/business-plan's sources corpus | papers (pdf) whose licence allows it, signed publet objects (cbor, named by their SHA-256 like any file) and their indexes (json); all kept, and with no `in_use` list nothing is ever cleaned |
+
+### Private tenants
+
+A tenant with `"private": true` serves nothing to the public. Every read
+and every write needs an OpenID Connect token (a JWT) whose **principal**
+is on the tenant's lists:
+
+| Key | Who |
+|---|---|
+| `read` | may read its photos and files |
+| `write` | may upload, and read |
+
+A principal is `github:<owner>/<repo>` (any ref) or
+`github:<owner>/<repo>@<ref>` (only that ref, such as
+`refs/heads/main`): a GitHub Actions job of that repository. `auth:<client>`, a
+client of auth.sustenaut.eu, is ready in `src/jwt.js`, waiting for its
+issuer to be turned on. Personal tokens and GitHub App tokens are never
+taken by a private tenant, and it needs no `repository`.
+
+A token is taken only if it is RS256, from a trusted issuer (only
+`https://token.actions.githubusercontent.com` for now), signed by a key in
+that issuer's published key set, for the audience `storage.sustenaut.eu`,
+and in date (a minute of clock skew allowed). The service fetches the key
+sets itself and keeps them for ten minutes, so it holds no secret.
+
+A private tenant's files are never cached: not by Cloudflare's cache, and
+not by a browser (`Cache-Control: private, no-store`, `Vary: Authorization`).
+Only the tenant's `origins` get CORS headers, never `*`. The clean-up
+never touches a private tenant.
+
+A public tenant can have a `write` list too: those workflows then upload
+with their token, besides the editors' GitHub tokens.
+
+In a workflow, ask GitHub for a token for this audience (the job needs
+`permissions: id-token: write`), then send it like any other:
+
+```sh
+token=$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+  "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=storage.sustenaut.eu" | jq -r .value)
+curl -fsS -H "Authorization: Bearer $token" -F file=@publication-0-objects.tar.gz \
+  https://storage.sustenaut.eu/publications/files
+```
+
+A file's id is its SHA-256, so a reader that knows the hash it wants also
+knows the address: `/publications/f/<sha256>/<name>`.
 
 ### The clean-up
 

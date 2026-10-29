@@ -34,7 +34,15 @@
 // files (client documents that went out) are never deleted, a tenant
 // whose list has no "files" key never has files deleted, and a tenant
 // without an in_use list has nothing deleted.
+//
+// A private tenant ("private": true) is different: nothing in it is public.
+// Reading needs an OpenID Connect token (src/jwt.js) whose principal is in
+// its "read" or "write" list, writing one in its "write" list; GitHub tokens
+// aren't taken. Its files are never cached, at Cloudflare or in a browser,
+// and never cleaned. A public tenant with a "write" list takes such tokens
+// for uploads too, besides its editors' GitHub tokens.
 
+import { isJwt, verify, allowed } from "./jwt.js";
 import TENANTS from "../tenants.json" with { type: "json" };
 
 export const WIDTHS = [480, 960, 1600];
@@ -69,6 +77,7 @@ export const FILE_TYPES = {
   // A publet object: its id is already its content's SHA-256, so the check is only that it is one, a CBOR map.
   cbor: { type: "application/cbor", inline: false, check: (b) => b.length > 0 && b[0] >= 0xa0 && b[0] <= 0xbf },
   json: { type: "application/json", inline: true, check: isJson },
+  gz: { type: "application/gzip", inline: false, check: (b) => b[0] === 0x1f && b[1] === 0x8b },
 };
 
 function isJson(b) {
@@ -107,22 +116,25 @@ export async function handle(request, env, tenants = TENANTS) {
 }
 
 // A photo, from Cloudflare's cache where it can be (the Cache API works on
-// the custom domain, not on pages.dev), else from the bucket.
+// the custom domain, not on pages.dev), else from the bucket. A private
+// tenant's only to its readers, and never from or into a cache.
 async function serve(url, env, request, tenant) {
+  if (tenant.private) await reader(request, tenant);
   const photo = url.pathname.match(PHOTO);
   const file = !photo && url.pathname.match(FILE);
   const kind = file && FILE_TYPES[extension(file[3])];
   if (!photo && !(kind && tenant.files)) throw status(404, "not found");
-  const cache = request.method === "GET" && globalThis.caches?.default;
+  const cache = !tenant.private && request.method === "GET" && globalThis.caches?.default;
   const hit = cache && (await cache.match(request));
   if (hit) return hit;
   const object = await env.STORAGE.get(url.pathname.slice(1));
   if (!object) throw status(404, "not found");
   const headers = {
     "Content-Type": photo ? FORMATS[photo[4]] : kind.type,
-    "Cache-Control": "public, max-age=31536000, immutable",
-    "Access-Control-Allow-Origin": "*",
     ETag: object.httpEtag,
+    ...(tenant.private
+      ? { ...corsHeaders(request, tenant), "Cache-Control": "private, no-store", Vary: "Authorization, Origin" }
+      : { "Cache-Control": "public, max-age=31536000, immutable", "Access-Control-Allow-Origin": "*" }),
   };
   if (file) {
     // An uploaded file never runs as a page of this site: an SVG's scripts stay off.
@@ -139,7 +151,7 @@ async function serve(url, env, request, tenant) {
 
 // Stores the sizes of one photo, and answers its description.
 export async function upload(request, env, tenantId, tenant) {
-  const { login } = await editor(request, tenant.repository);
+  const { login } = await writer(request, tenant);
   const form = await request.formData();
   const files = {};
   for (const [name, file] of form.entries()) {
@@ -177,7 +189,7 @@ export async function upload(request, env, tenantId, tenant) {
 // Stores one file, named by its content, and answers its description.
 export async function uploadFile(request, env, tenantId, tenant) {
   if (!tenant.files) throw status(404, "this site keeps no files here");
-  const who = await editor(request, tenant.repository);
+  const who = await writer(request, tenant);
   const form = await request.formData();
   const file = form.get("file");
   for (const field of form.keys()) {
@@ -210,14 +222,42 @@ export async function uploadFile(request, env, tenantId, tenant) {
   return { id, name, url: `/${key}`, type: kind.type, size: bytes.length, label, kept: keep };
 }
 
+// Who may write to the tenant: an OpenID Connect token's principal in its
+// "write" list, else (on a public tenant) a GitHub token that may push to
+// its repository.
+async function writer(request, tenant) {
+  const token = bearer(request);
+  if (isJwt(token)) {
+    const principal = await verify(token);
+    if (!allowed(principal, tenant.write)) throw status(403, `${principal} may not write here`);
+    return { login: principal, app: false };
+  }
+  if (tenant.private || !tenant.repository) throw status(401, "this tenant takes OpenID Connect tokens only");
+  return editor(request, tenant.repository);
+}
+
+// A private tenant's reader: an OpenID Connect token's principal in its
+// "read" or "write" list.
+async function reader(request, tenant) {
+  const token = bearer(request);
+  if (!isJwt(token)) throw status(401, "this tenant takes OpenID Connect tokens only");
+  const principal = await verify(token);
+  if (!allowed(principal, [...(tenant.read || []), ...(tenant.write || [])])) throw status(403, `${principal} may not read here`);
+}
+
+function bearer(request) {
+  const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s*/i, "").trim();
+  if (!token) throw status(401, "sign in first");
+  return token;
+}
+
 // Who is behind the request's token, if it may push to the repository;
 // anything else is refused. A person's token is checked on the repository
 // itself; a GitHub App's installation token (ghs_…), which can't ask who its
 // user is, must list the repository among its installation's, with push
 // (contents: write).
 async function editor(request, repository) {
-  const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s*/i, "").trim();
-  if (!token) throw status(401, "sign in first");
+  const token = bearer(request);
   const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "User-Agent": "sustenaut-storage" };
   if (token.startsWith("ghs_")) return { login: "github-app", app: true, ...(await installation(headers, repository)) };
   return { login: await person(headers, repository), app: false };
@@ -253,10 +293,15 @@ function extension(name) {
 
 // Deletes each tenant's photos its site doesn't use and that are older
 // than GRACE_DAYS. A tenant whose list can't be read, or comes back empty
-// while it has photos, is left alone rather than emptied on a bad day.
+// while it has photos, is left alone rather than emptied on a bad day, and
+// a private tenant always is.
 export async function clean(env, tenants = TENANTS, now = Date.now()) {
   const report = {};
   for (const [tenantId, tenant] of Object.entries(tenants)) {
+    if (tenant.private) {
+      report[tenantId] = { skipped: "private: nothing is cleaned" };
+      continue;
+    }
     if (!tenant.in_use) {
       report[tenantId] = { skipped: "no in_use list: nothing is cleaned" };
       continue;
@@ -306,7 +351,7 @@ async function listAll(env, prefix) {
 
 function corsHeaders(request, tenant) {
   const origin = request.headers.get("Origin");
-  const ok = origin && tenant && (tenant.origins.includes(origin) || /^http:\/\/localhost(:\d+)?$/.test(origin));
+  const ok = origin && tenant && ((tenant.origins || []).includes(origin) || /^http:\/\/localhost(:\d+)?$/.test(origin));
   return ok
     ? { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": "POST, GET", "Access-Control-Allow-Headers": "Authorization", Vary: "Origin" }
     : { Vary: "Origin" };
