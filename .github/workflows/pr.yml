@@ -11,12 +11,12 @@ permissions:
 jobs:
   checks:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@f0984614ce18dd9f5eedfb7a39451c2bff89d232 # v0.17.0
+    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@16cb82e94b7fc4f56dd1d545e289994f63eaba6a # v0.17.1
     with: {"shellcheck": "with-secrets"}
 
   tests:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@f0984614ce18dd9f5eedfb7a39451c2bff89d232 # v0.17.0
+    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@16cb82e94b7fc4f56dd1d545e289994f63eaba6a # v0.17.1
     with: {"setup": "npm ci", "test": "npm test"}
 
   # The one check a ruleset requires: it passes only when every job
