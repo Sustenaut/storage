@@ -71,7 +71,7 @@ without `kept` doesn't unkeep it.
 |---|---|---|
 | `visit-ee` | visit.ee | photos |
 | `opportunity` | opportunity.sustenaut.eu | photos, and pdf, pptx, docx, png, jpg, svg, csv and xlsx files |
-| `publications` (private) | pub.sustenaut.eu's publet objects | each publication release's `publication-0-objects.tar.gz`, uploaded by schryer/business-plan's main and read by Sustenaut/pub-site; all kept |
+| `publications` (private) | pub.sustenaut.eu's publet objects | each publication release's `publication-0-objects.tar.gz`, uploaded by Sustenaut/business-plan's main and read by Sustenaut/pub-site; all kept |
 | `sources` | schryer/business-plan's sources corpus | papers (pdf) whose licence allows it, signed publet objects (cbor, named by their SHA-256 like any file) and their indexes (json); all kept, and with no `in_use` list nothing is ever cleaned |
 
 ### Private tenants

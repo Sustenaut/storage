@@ -101,7 +101,7 @@ const PUB_SITE = (ref) => token("Sustenaut/pub-site", ref);
 test("the publications tenant is private: business-plan's main writes it, pub-site reads it, kept", () => {
   const t = REAL_TENANTS.publications;
   assert.equal(t.private, true);
-  assert.deepEqual(t.write, ["github:schryer/business-plan@refs/heads/main"]);
+  assert.deepEqual(t.write, ["github:Sustenaut/business-plan@refs/heads/main"]);
   assert.deepEqual(t.read, ["github:Sustenaut/pub-site"]);
   assert.deepEqual(t.files.types, ["gz"]);
   assert.equal(t.files.kept, true);
@@ -116,7 +116,7 @@ test("a workflow's token writes a private file, and a reader gets it, never cach
   assert.equal(file.kept, true);
   assert.match(file.url, /^\/publications\/f\/[0-9a-f]{64}\/publication-0-objects\.tar\.gz$/);
   const stored = env.STORAGE.objects.get(file.url.slice(1));
-  assert.equal(stored.customMetadata.by, "github:schryer/business-plan@refs/heads/main");
+  assert.equal(stored.customMetadata.by, "github:Sustenaut/business-plan@refs/heads/main");
 
   for (const method of ["GET", "HEAD"]) {
     const read = await get(file.url, await PUB_SITE("refs/pull/3/merge"), method);
@@ -168,7 +168,7 @@ test("a public tenant takes a workflow's token when its write list names it, and
 test("tokens are refused unless RS256, from a trusted issuer, signed by its key, for this audience and in date", async () => {
   const repo = "schryer/business-plan";
   const refused = async (t) => assert.rejects(verify(t), (err) => err.status === 401);
-  assert.equal(await verify(await token(repo)), "github:schryer/business-plan@refs/heads/main");
+  assert.equal(await verify(await token(repo)), "github:Sustenaut/business-plan@refs/heads/main");
   await refused(await token(repo, "refs/heads/main", { claims: { aud: "sts.amazonaws.com" } }));
   await refused(await token(repo, "refs/heads/main", { claims: { aud: undefined } }));
   await refused(await token(repo, "refs/heads/main", { claims: { exp: now() - 120 } }));

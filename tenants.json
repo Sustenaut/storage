@@ -25,7 +25,7 @@
   "publications": {
     "private": true,
     "read": ["github:Sustenaut/pub-site"],
-    "write": ["github:schryer/business-plan@refs/heads/main"],
+    "write": ["github:Sustenaut/business-plan@refs/heads/main"],
     "files": {
       "types": ["gz"],
       "max_bytes": 104857600,
