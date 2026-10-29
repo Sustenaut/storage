@@ -95,7 +95,7 @@ function put(tenant, bearer, name, bytes) {
 const get = (path, bearer, method = "GET") =>
   call(new Request(`https://storage.example${path}`, { method, headers: bearer ? { Authorization: `Bearer ${bearer}` } : {} }));
 
-const BP_MAIN = () => token("schryer/business-plan");
+const BP_MAIN = () => token("Sustenaut/business-plan");
 const PUB_SITE = (ref) => token("Sustenaut/pub-site", ref);
 
 test("the publications tenant is private: business-plan's main writes it, pub-site reads it, kept", () => {
@@ -144,8 +144,8 @@ test("a private file is refused without a token of a principal on its lists, bef
 
 test("only the writers' principals, at their ref, write a private tenant; GitHub tokens never do", async () => {
   assert.equal((await put("publications", await PUB_SITE(), "p.tar.gz", gz())).status, 403, "a reader can't write");
-  assert.equal((await put("publications", await token("schryer/business-plan", "refs/heads/feature"), "p.tar.gz", gz())).status, 403, "only main");
-  assert.equal((await put("publications", await token("schryer/business-plan", "refs/pull/9/merge"), "p.tar.gz", gz())).status, 403);
+  assert.equal((await put("publications", await token("Sustenaut/business-plan", "refs/heads/feature"), "p.tar.gz", gz())).status, 403, "only main");
+  assert.equal((await put("publications", await token("Sustenaut/business-plan", "refs/pull/9/merge"), "p.tar.gz", gz())).status, 403);
   assert.equal((await put("publications", "good", "p.tar.gz", gz())).status, 401);
   assert.equal((await put("publications", "ghs_app", "p.tar.gz", gz())).status, 401);
   assert.equal((await put("publications", await BP_MAIN(), "p.pdf", pdf())).status, 415);
@@ -166,7 +166,7 @@ test("a public tenant takes a workflow's token when its write list names it, and
 });
 
 test("tokens are refused unless RS256, from a trusted issuer, signed by its key, for this audience and in date", async () => {
-  const repo = "schryer/business-plan";
+  const repo = "Sustenaut/business-plan";
   const refused = async (t) => assert.rejects(verify(t), (err) => err.status === 401);
   assert.equal(await verify(await token(repo)), "github:Sustenaut/business-plan@refs/heads/main");
   await refused(await token(repo, "refs/heads/main", { claims: { aud: "sts.amazonaws.com" } }));
