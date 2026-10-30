@@ -257,6 +257,8 @@ test("a kept file stays kept when the same file is uploaded again", async () => 
 
 test("the opportunity tenant takes the files the opportunity site needs", () => {
   const t = REAL_TENANTS.opportunity;
+  assert.equal(t.private, true);
+  assert.deepEqual(t.read, ["k8s:opportunity/app"]);
   assert.equal(t.repository, "Sustenaut/business-plan");
   assert.deepEqual(t.origins, ["https://opportunity.sustenaut.eu"]);
   assert.deepEqual(t.files.types, ["pdf", "pptx", "docx", "png", "jpg", "svg", "csv", "xlsx"]);
@@ -307,8 +309,32 @@ test("a tenant without an in_use list has nothing cleaned", async () => {
   assert.equal(env.STORAGE.objects.size, 1);
 });
 
-test("the sources tenant takes papers and publet objects for business-plan, kept and never cleaned", () => {
+test("a private tenant with editors takes a GitHub token that may push, for reading and writing, and is never public", async () => {
+  const tenants = { sources: { ...SOURCES, private: true, editors: true } };
+  const form = new FormData();
+  form.append("file", new Blob([cbor()]), "file.bin");
+  form.append("name", "bafy-claim.cbor");
+  const up = await handle(new Request("https://storage.example/sources/files", { method: "POST", body: form, headers: { Authorization: "Bearer good" } }), env, tenants);
+  assert.equal(up.status, 200);
+  const { url } = await up.json();
+  const read = (headers) => handle(new Request(`https://storage.example${url}`, { headers }), env, tenants);
+
+  assert.equal((await read({})).status, 401, "nothing without a token");
+  assert.equal((await read({ Authorization: "Bearer readonly" })).status, 403, "a token that can't push reads nothing");
+  const got = await read({ Authorization: "Bearer good" });
+  assert.equal(got.status, 200);
+  assert.equal(got.headers.get("Cache-Control"), "private, no-store");
+
+  // Without "editors" the same tenant takes no GitHub token, as before.
+  const closed = { sources: { ...SOURCES, private: true } };
+  assert.equal((await handle(new Request(`https://storage.example${url}`, { headers: { Authorization: "Bearer good" } }), env, closed)).status, 401);
+});
+
+test("the sources tenant is private: business-plan's main reads it, its editors still upload, kept and never cleaned", () => {
   const t = REAL_TENANTS.sources;
+  assert.equal(t.private, true);
+  assert.equal(t.editors, true);
+  assert.deepEqual(t.read, ["github:Sustenaut/business-plan@refs/heads/main"]);
   assert.equal(t.repository, "Sustenaut/business-plan");
   assert.equal(t.in_use, undefined);
   assert.deepEqual(t.files, { types: ["pdf", "cbor", "json"], max_bytes: 26214400, kept: true });

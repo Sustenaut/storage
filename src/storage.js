@@ -42,8 +42,9 @@
 // A private tenant ("private": true) is different: nothing in it is public.
 // Reading needs an OpenID Connect token (src/jwt.js) whose principal is in
 // its "read" or "write" list, writing one in its "write" list; GitHub tokens
-// aren't taken. Its files are never cached, at Cloudflare or in a browser,
-// and never cleaned. A public tenant with a "write" list takes such tokens
+// aren't taken, unless it says "editors": true, when a GitHub token that may
+// push to its "repository" may read and write too. Its files are never cached,
+// at Cloudflare or in a browser, and never cleaned. A public tenant with a "write" list takes such tokens
 // for uploads too, besides its editors' GitHub tokens.
 //
 // A named head is a name for "the latest" of something in a private tenant
@@ -310,8 +311,8 @@ export async function uploadFile(request, env, tenantId, tenant) {
 }
 
 // Who may write to the tenant: an OpenID Connect token's principal in its
-// "write" list, else (on a public tenant) a GitHub token that may push to
-// its repository.
+// "write" list, else (on a public tenant, or a private one with "editors") a
+// GitHub token that may push to its repository.
 async function writer(request, tenant) {
   const token = bearer(request);
   if (isJwt(token)) {
@@ -320,15 +321,20 @@ async function writer(request, tenant) {
     // A service on the server uploads for a person, as an app does: it may say whom ("for").
     return { login: principal, app: principal.startsWith("k8s:") };
   }
-  if (tenant.private || !tenant.repository) throw status(401, "this tenant takes OpenID Connect tokens only");
+  if ((tenant.private && !tenant.editors) || !tenant.repository) throw status(401, "this tenant takes OpenID Connect tokens only");
   return editor(request, tenant.repository);
 }
 
 // A private tenant's reader: an OpenID Connect token's principal in its
-// "read" or "write" list.
+// "read" or "write" list, or, with "editors", a GitHub token that may push to
+// its repository.
 async function reader(request, tenant) {
   const token = bearer(request);
-  if (!isJwt(token)) throw status(401, "this tenant takes OpenID Connect tokens only");
+  if (!isJwt(token)) {
+    if (!tenant.editors || !tenant.repository) throw status(401, "this tenant takes OpenID Connect tokens only");
+    await editor(request, tenant.repository);
+    return;
+  }
   const principal = await verify(token);
   if (!allowed(principal, [...(tenant.read || []), ...(tenant.write || [])])) throw status(403, `${principal} may not read here`);
 }
