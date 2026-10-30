@@ -13,6 +13,10 @@
 //                                               id is its content's SHA-256
 //   POST /<tenant>/files                        a file, for tenants whose
 //                                               tenants.json entry has "files"
+//   GET  /<tenant>/head/<name>                  the file a named head points
+//                                               at, for tenants with "heads"
+//   PUT  /<tenant>/head/<name>                  move the head to a stored file
+//   GET  /<tenant>/head/<name>/log              where the head has pointed
 //   POST /_clean                                the nightly clean-up
 //
 // An upload is the sizes the editor made in the browser (multipart fields
@@ -41,6 +45,12 @@
 // aren't taken. Its files are never cached, at Cloudflare or in a browser,
 // and never cleaned. A public tenant with a "write" list takes such tokens
 // for uploads too, besides its editors' GitHub tokens.
+//
+// A named head is a name for "the latest" of something in a private tenant
+// with "heads": true: the only thing here that changes, so a move says which
+// file it replaces (If-Match) and loses to any other move made since. Moving
+// first writes the head's current place to its log, so a move that fails
+// leaves a true entry behind, and none is ever missing.
 
 import { isJwt, verify, allowed } from "./jwt.js";
 import TENANTS from "../tenants.json" with { type: "json" };
@@ -55,6 +65,8 @@ const PHOTO = /^\/([a-z0-9-]+)\/p\/([0-9a-f]{16})\/(\d+)\.(jpg|webp)$/;
 const FILE = /^\/([a-z0-9-]+)\/f\/([0-9a-f]{64})\/([A-Za-z0-9][A-Za-z0-9._-]{0,119})$/;
 const FILE_MAX_BYTES = 25 * 1024 * 1024; // when the tenant names none; Pages takes 100 MB a request
 const LABEL_CHARS = 200;
+const HEAD = /^\/([a-z0-9-]+)\/head\/([a-z0-9][a-z0-9._-]{0,63})(\/log)?$/;
+const HASH = /^[0-9a-f]{64}$/;
 
 // The file types a tenant may allow: Content-Type, whether a browser shows
 // it inline, and a check of its first bytes.
@@ -107,6 +119,7 @@ export async function handle(request, env, tenants = TENANTS) {
     }
     if (!tenant) throw status(404, "not found");
     if (request.method === "GET" || request.method === "HEAD") return await serve(url, env, request, tenant);
+    if (request.method === "PUT") return await moveHead(request, env, url, tenant);
     if (request.method === "POST" && url.pathname === `/${tenantId}/upload`) return json(await upload(request, env, tenantId, tenant), 200, cors);
     if (request.method === "POST" && url.pathname === `/${tenantId}/files`) return json(await uploadFile(request, env, tenantId, tenant), 200, cors);
     throw status(404, "not found");
@@ -120,6 +133,8 @@ export async function handle(request, env, tenants = TENANTS) {
 // tenant's only to its readers, and never from or into a cache.
 async function serve(url, env, request, tenant) {
   if (tenant.private) await reader(request, tenant);
+  const head = url.pathname.match(HEAD);
+  if (head) return head[3] ? json(await headLog(env, head, tenant), 200, privateHeaders(request, tenant)) : await serveHead(request, env, head, tenant);
   const photo = url.pathname.match(PHOTO);
   const file = !photo && url.pathname.match(FILE);
   const kind = file && FILE_TYPES[extension(file[3])];
@@ -133,20 +148,92 @@ async function serve(url, env, request, tenant) {
     "Content-Type": photo ? FORMATS[photo[4]] : kind.type,
     ETag: object.httpEtag,
     ...(tenant.private
-      ? { ...corsHeaders(request, tenant), "Cache-Control": "private, no-store", Vary: "Authorization, Origin" }
+      ? privateHeaders(request, tenant)
       : { "Cache-Control": "public, max-age=31536000, immutable", "Access-Control-Allow-Origin": "*" }),
   };
-  if (file) {
-    // An uploaded file never runs as a page of this site: an SVG's scripts stay off.
-    Object.assign(headers, {
-      "Content-Disposition": `${kind.inline ? "inline" : "attachment"}; filename="${file[3]}"`,
-      "Content-Security-Policy": "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox",
-      "X-Content-Type-Options": "nosniff",
-    });
-  }
+  if (file) Object.assign(headers, fileHeaders(file[3], kind));
   const response = new Response(request.method === "HEAD" ? null : object.body, { headers });
   if (cache) await cache.put(request, response.clone());
   return response;
+}
+
+// An uploaded file never runs as a page of this site: an SVG's scripts stay off.
+function fileHeaders(name, kind) {
+  return {
+    "Content-Disposition": `${kind.inline ? "inline" : "attachment"}; filename="${name}"`,
+    "Content-Security-Policy": "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox",
+    "X-Content-Type-Options": "nosniff",
+  };
+}
+
+function privateHeaders(request, tenant) {
+  return { ...corsHeaders(request, tenant), "Cache-Control": "private, no-store", Vary: "Authorization, Origin" };
+}
+
+// The head's record, and its bucket etag for moving it, or null if it has
+// never moved. Only a private tenant with "heads" has any.
+async function readHead(env, tenantId, name, tenant) {
+  if (!tenant.private || !tenant.heads) throw status(404, "this tenant has no heads");
+  const object = await env.STORAGE.get(`${tenantId}/h/${name}`);
+  return object && { record: JSON.parse(await object.text()), etag: object.etag };
+}
+
+async function serveHead(request, env, [, tenantId, name], tenant) {
+  const head = await readHead(env, tenantId, name, tenant);
+  if (!head) throw status(404, "not found");
+  const { hash, key } = head.record;
+  const object = await env.STORAGE.get(key);
+  if (!object) throw status(404, `${hash} is no longer stored`);
+  const fileName = key.split("/").pop();
+  const kind = FILE_TYPES[extension(fileName)];
+  const headers = { "Content-Type": kind.type, ETag: `"${hash}"`, ...privateHeaders(request, tenant), ...fileHeaders(fileName, kind) };
+  return new Response(request.method === "HEAD" ? null : object.body, { headers });
+}
+
+// Where the head points now, then where it pointed before, newest first.
+async function headLog(env, [, tenantId, name], tenant) {
+  const head = await readHead(env, tenantId, name, tenant);
+  if (!head) throw status(404, "not found");
+  const { hash, time, principal } = head.record;
+  const earlier = (await listAll(env, `${tenantId}/l/${name}/`)).map((o) => o.customMetadata);
+  // The current place is in the log too if a move from it failed.
+  const log = earlier.filter((e) => !(e.hash === hash && e.time === time));
+  return { name, log: [{ hash, time, principal }, ...log] };
+}
+
+// Moves a head to a stored file's hash ({"hash": "<sha256>"}), if it still
+// points where the request says: If-Match with its current hash, or
+// If-None-Match: * for its first move.
+async function moveHead(request, env, url, tenant) {
+  const route = url.pathname.match(HEAD);
+  if (!route || route[3]) throw status(404, "not found");
+  const [, tenantId, name] = route;
+  const { login } = await writer(request, tenant);
+  const head = await readHead(env, tenantId, name, tenant);
+  const expected = (request.headers.get("If-Match") || "").replace(/^W\//, "").replace(/"/g, "").trim();
+  const first = request.headers.get("If-None-Match")?.trim() === "*";
+  if (head ? expected !== head.record.hash : !first) {
+    throw status(412, head ? `${name} points at ${head.record.hash}` : `${name} has never moved: send If-None-Match: *`);
+  }
+  const hash = await request.json().then((b) => b?.hash, () => undefined);
+  if (typeof hash !== "string" || !HASH.test(hash)) throw status(400, 'the body is {"hash": "<sha256 of a stored file>"}');
+  const { objects } = await env.STORAGE.list({ prefix: `${tenantId}/f/${hash}/`, limit: 1 });
+  if (!objects.length) throw status(404, `no stored file has the hash ${hash}`);
+  // Already there: nothing moved, and nothing to add to the log.
+  if (head?.record.hash === hash) return json(head.record, 200, { ETag: `"${hash}"` });
+
+  if (head) await logHead(env, tenantId, name, head.record);
+  const record = { hash, key: objects[0].key, time: new Date().toISOString(), principal: login };
+  const onlyIf = head ? { etagMatches: head.etag } : { etagDoesNotMatch: "*" };
+  const moved = await env.STORAGE.put(`${tenantId}/h/${name}`, JSON.stringify(record), { onlyIf });
+  if (!moved) throw status(412, `${name} moved just now`);
+  return json(record, 200, { ETag: `"${hash}"` });
+}
+
+// A log entry's key sorts newest first, and is the same if written twice.
+function logHead(env, tenantId, name, { hash, time, principal }) {
+  const order = String(9999999999999 - Date.parse(time)).padStart(13, "0");
+  return env.STORAGE.put(`${tenantId}/l/${name}/${order}-${hash}`, "", { customMetadata: { hash, time, principal } });
 }
 
 // Stores the sizes of one photo, and answers its description.

@@ -21,6 +21,9 @@ part of the bucket:
 | `POST /<tenant>/upload` | Stores a photo from the tenant's editor (multipart fields named `<width>.jpg` and `<width>.webp`, made in the browser) and answers its description: `{id, width, height, widths, formats}`. |
 | `GET /<tenant>/f/<id>/<name>` | A file, cached for good: the id is the SHA-256 of its content. |
 | `POST /<tenant>/files` | Stores one file (multipart field `file`, optional `name`, `label` such as "OPP-02 market report v3", `kept=true`) for a tenant with `files`, and answers `{id, name, url, type, size, label, kept}`. |
+| `GET /<tenant>/head/<name>` | The file a named head points at, with its hash as `ETag`, for a private tenant with `heads` (below). |
+| `PUT /<tenant>/head/<name>` | Moves the head to a stored file. |
+| `GET /<tenant>/head/<name>/log` | Where the head has pointed, newest first. |
 | `POST /_clean` | Deletes the photos and files each tenant no longer uses, at most once a day. Kept files are never deleted. |
 
 An upload has to carry the editor's GitHub token
@@ -72,6 +75,7 @@ without `kept` doesn't unkeep it.
 | `visit-ee` | visit.ee | photos |
 | `opportunity` | opportunity.sustenaut.eu | photos, and pdf, pptx, docx, png, jpg, svg, csv and xlsx files |
 | `publications` (private) | pub.sustenaut.eu's publet objects | each publication release's `publication-0-objects.tar.gz`, uploaded by Sustenaut/business-plan's main and read by Sustenaut/pub-site; all kept |
+| `release-sustenaut`, `release-schryer` (private) | the release control plane's board snapshots, one tenant per GitHub owner | json files, all kept, written by Sustenaut/release's main and read by the release app; a `board` head names the latest |
 | `sources` | Sustenaut/business-plan's sources corpus | papers (pdf) whose licence allows it, signed publet objects (cbor, named by their SHA-256 like any file) and their indexes (json); all kept, and with no `in_use` list nothing is ever cleaned |
 
 ### Private tenants
@@ -155,6 +159,32 @@ The tests fail while `src/k8s.json` has no keys.
 
 A file's id is its SHA-256, so a reader that knows the hash it wants also
 knows the address: `/publications/f/<sha256>/<name>`.
+
+### Named heads
+
+A file here never changes, so nothing says which one is the latest. A private
+tenant with `"heads": true` can keep names for that, such as `board`. Reading
+needs the same token as reading a file, and moving one the same as uploading:
+
+```sh
+# Upload the file, then point the head at its id, the SHA-256 of its content.
+curl -fsS -H "Authorization: Bearer $token" -F file=@board.json \
+  https://storage.sustenaut.eu/release-sustenaut/files
+curl -fsS -X PUT -H "Authorization: Bearer $token" -H "If-Match: \"$current\"" \
+  -d "{\"hash\": \"$hash\"}" https://storage.sustenaut.eu/release-sustenaut/head/board
+```
+
+The `ETag` of `GET` or `HEAD /<tenant>/head/<name>` is the hash it points at,
+quoted. `PUT` needs that hash in `If-Match`, or `If-None-Match: *` for a head
+that has never moved, and answers `412` when the head points elsewhere, also if
+another move got there first. So two writers can't overwrite each other: the
+one that loses reads the head again. Moving a head to where it already points
+changes nothing and adds nothing to the log.
+
+`GET /<tenant>/head/<name>/log` answers
+`{"name": "board", "log": [{"hash", "time", "principal"}, …]}`, newest first,
+starting with where it points now. A head's files can't be deleted, because
+the clean-up never touches a private tenant. A head can't be deleted either.
 
 ### The clean-up
 

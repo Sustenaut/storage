@@ -1,16 +1,32 @@
 {
   "visit-ee": {
     "repository": "schryer/visit-ee",
-    "origins": ["https://temp.schryer.eu", "https://visit.ee"],
+    "origins": [
+      "https://temp.schryer.eu",
+      "https://visit.ee"
+    ],
     "in_use": "https://temp.schryer.eu/photos.json"
   },
   "opportunity": {
     "repository": "Sustenaut/business-plan",
-    "write": ["k8s:opportunity/app"],
-    "origins": ["https://opportunity.sustenaut.eu"],
+    "write": [
+      "k8s:opportunity/app"
+    ],
+    "origins": [
+      "https://opportunity.sustenaut.eu"
+    ],
     "in_use": "https://opportunity.sustenaut.eu/storage-in-use.json",
     "files": {
-      "types": ["pdf", "pptx", "docx", "png", "jpg", "svg", "csv", "xlsx"],
+      "types": [
+        "pdf",
+        "pptx",
+        "docx",
+        "png",
+        "jpg",
+        "svg",
+        "csv",
+        "xlsx"
+      ],
       "max_bytes": 26214400
     }
   },
@@ -18,18 +34,60 @@
     "repository": "Sustenaut/business-plan",
     "origins": [],
     "files": {
-      "types": ["pdf", "cbor", "json"],
+      "types": [
+        "pdf",
+        "cbor",
+        "json"
+      ],
       "max_bytes": 26214400,
       "kept": true
     }
   },
   "publications": {
     "private": true,
-    "read": ["github:Sustenaut/pub-site"],
-    "write": ["github:Sustenaut/business-plan@refs/heads/main"],
+    "read": [
+      "github:Sustenaut/pub-site"
+    ],
+    "write": [
+      "github:Sustenaut/business-plan@refs/heads/main"
+    ],
     "files": {
-      "types": ["gz"],
+      "types": [
+        "gz"
+      ],
       "max_bytes": 104857600,
+      "kept": true
+    }
+  },
+  "release-sustenaut": {
+    "private": true,
+    "heads": true,
+    "read": [
+      "k8s:release/app"
+    ],
+    "write": [
+      "github:Sustenaut/release@refs/heads/main"
+    ],
+    "files": {
+      "types": [
+        "json"
+      ],
+      "kept": true
+    }
+  },
+  "release-schryer": {
+    "private": true,
+    "heads": true,
+    "read": [
+      "k8s:release/app"
+    ],
+    "write": [
+      "github:Sustenaut/release@refs/heads/main"
+    ],
+    "files": {
+      "types": [
+        "json"
+      ],
       "kept": true
     }
   }
