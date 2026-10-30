@@ -37,6 +37,9 @@
   "sources": {
     "private": true,
     "editors": true,
+    "public_types": [
+      "pdf"
+    ],
     "read": [
       "github:Sustenaut/business-plan@refs/heads/main"
     ],

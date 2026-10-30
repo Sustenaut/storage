@@ -44,7 +44,9 @@
 // its "read" or "write" list, writing one in its "write" list; GitHub tokens
 // aren't taken, unless it says "editors": true, when a GitHub token that may
 // push to its "repository" may read and write too. Its files are never cached,
-// at Cloudflare or in a browser, and never cleaned. A public tenant with a "write" list takes such tokens
+// at Cloudflare or in a browser, and never cleaned, except the file types it
+// lists in "public_types", which anyone may read and which are cached like a
+// public tenant's. A public tenant with a "write" list takes such tokens
 // for uploads too, besides its editors' GitHub tokens.
 //
 // A named head is a name for "the latest" of something in a private tenant
@@ -133,14 +135,15 @@ export async function handle(request, env, tenants = TENANTS) {
 // the custom domain, not on pages.dev), else from the bucket. A private
 // tenant's only to its readers, and never from or into a cache.
 async function serve(url, env, request, tenant) {
-  if (tenant.private) await reader(request, tenant);
+  const closed = tenant.private && !publicFile(url, tenant);
+  if (closed) await reader(request, tenant);
   const head = url.pathname.match(HEAD);
   if (head) return head[3] ? json(await headLog(env, head, tenant), 200, privateHeaders(request, tenant)) : await serveHead(request, env, head, tenant);
   const photo = url.pathname.match(PHOTO);
   const file = !photo && url.pathname.match(FILE);
   const kind = file && FILE_TYPES[extension(file[3])];
   if (!photo && !(kind && tenant.files)) throw status(404, "not found");
-  const cache = !tenant.private && request.method === "GET" && globalThis.caches?.default;
+  const cache = !closed && request.method === "GET" && globalThis.caches?.default;
   const hit = cache && (await cache.match(request));
   if (hit) return hit;
   const object = await env.STORAGE.get(url.pathname.slice(1));
@@ -148,7 +151,7 @@ async function serve(url, env, request, tenant) {
   const headers = {
     "Content-Type": photo ? FORMATS[photo[4]] : kind.type,
     ETag: object.httpEtag,
-    ...(tenant.private
+    ...(closed
       ? privateHeaders(request, tenant)
       : { "Cache-Control": "public, max-age=31536000, immutable", "Access-Control-Allow-Origin": "*" }),
   };
@@ -156,6 +159,12 @@ async function serve(url, env, request, tenant) {
   const response = new Response(request.method === "HEAD" ? null : object.body, { headers });
   if (cache) await cache.put(request, response.clone());
   return response;
+}
+
+// Whether this address is a file of a type the private tenant keeps public.
+function publicFile(url, tenant) {
+  const file = url.pathname.match(FILE);
+  return Boolean(file && tenant.public_types?.includes(extension(file[3])));
 }
 
 // An uploaded file never runs as a page of this site: an SVG's scripts stay off.

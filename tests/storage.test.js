@@ -330,10 +330,45 @@ test("a private tenant with editors takes a GitHub token that may push, for read
   assert.equal((await handle(new Request(`https://storage.example${url}`, { headers: { Authorization: "Bearer good" } }), env, closed)).status, 401);
 });
 
+test("a private tenant's public_types are open to anyone, and nothing else in it is", async () => {
+  const tenants = { sources: { ...SOURCES, private: true, editors: true, public_types: ["pdf"] } };
+  const upload = async (bytes, name) => {
+    const form = new FormData();
+    form.append("file", new Blob([bytes]), "file.bin");
+    form.append("name", name);
+    const up = await handle(new Request("https://storage.example/sources/files", { method: "POST", body: form, headers: { Authorization: "Bearer good" } }), env, tenants);
+    assert.equal(up.status, 200);
+    return (await up.json()).url;
+  };
+  const read = (url) => handle(new Request(`https://storage.example${url}`), env, tenants);
+  const paper = await upload(pdf(), "paper.pdf");
+  const object = await upload(cbor(), "bafy-claim.cbor");
+  const index = await upload(new TextEncoder().encode("{}"), "index.json");
+
+  const got = await read(paper);
+  assert.equal(got.status, 200);
+  assert.equal(got.headers.get("Content-Type"), "application/pdf");
+  assert.equal(got.headers.get("Cache-Control"), "public, max-age=31536000, immutable");
+  assert.equal((await read(object)).status, 401);
+  assert.equal((await read(index)).status, 401);
+  // Naming an object's address .pdf opens nothing: the stored name is part of the address.
+  assert.equal((await read(object.replace("bafy-claim.cbor", "bafy-claim.pdf"))).status, 404);
+  // Uploading stays closed, and a cbor can't be stored as a pdf.
+  const form = new FormData();
+  form.append("file", new Blob([pdf()]), "file.bin");
+  form.append("name", "other.pdf");
+  assert.equal((await handle(new Request("https://storage.example/sources/files", { method: "POST", body: form }), env, tenants)).status, 401);
+  const fake = new FormData();
+  fake.append("file", new Blob([cbor()]), "file.bin");
+  fake.append("name", "fake.pdf");
+  assert.equal((await handle(new Request("https://storage.example/sources/files", { method: "POST", body: fake, headers: { Authorization: "Bearer good" } }), env, tenants)).status, 400);
+});
+
 test("the sources tenant is private: business-plan's main reads it, its editors still upload, kept and never cleaned", () => {
   const t = REAL_TENANTS.sources;
   assert.equal(t.private, true);
   assert.equal(t.editors, true);
+  assert.deepEqual(t.public_types, ["pdf"], "only the raw papers are public");
   assert.deepEqual(t.read, ["github:Sustenaut/business-plan@refs/heads/main"]);
   assert.equal(t.repository, "Sustenaut/business-plan");
   assert.equal(t.in_use, undefined);
