@@ -76,7 +76,7 @@ without `kept` doesn't unkeep it.
 | `opportunity` (private) | opportunity.sustenaut.eu | photos, and pdf, pptx, docx, png, jpg, svg, csv and xlsx files |
 | `publications` (private) | pub.sustenaut.eu's publet objects | each publication release's `publication-0-objects.tar.gz`, uploaded by Sustenaut/business-plan's main and read by Sustenaut/pub-site and Sustenaut/estimate; all kept |
 | `release-sustenaut`, `release-schryer` (private) | the release control plane's board snapshots, one tenant per GitHub owner | json files, all kept, written by Sustenaut/release-controlplane's main and read by the release app; a `board` head names the latest |
-| `sources` (private) | Sustenaut/business-plan's sources corpus | papers (pdf) whose licence allows it, signed publet objects (cbor, named by their SHA-256 like any file) and their indexes (json); all kept, never cleaned; read by business-plan's main (the review site's image build) |
+| `sources` (private, its pdfs public) | Sustenaut/business-plan's sources corpus | papers (pdf) whose licence allows it, which come from elsewhere and stay public at the addresses signed records name; signed publet objects (cbor, named by their SHA-256 like any file) and their indexes (json); all kept, never cleaned; read by business-plan's main (the review site's image build) |
 
 ### Private tenants
 
@@ -99,7 +99,10 @@ token that may push to its `repository` may read and write it too, each time
 checked with GitHub. `sources` and `opportunity` do, because people upload to
 `sources` from their own machines (`make sources-upload`), where no workflow
 token exists. Nothing is public until an explicit publishing step puts it
-somewhere public.
+somewhere public, with one exception: `"public_types"` lists file types of a
+private tenant that anyone may read, cached like a public tenant's. `sources`
+lists `pdf`: the raw papers come from elsewhere, and its signed source records
+name their addresses.
 
 `k8s:<namespace>/<account>` is a pod on the Sustenaut k3s server, by its
 projected service-account token (below).
