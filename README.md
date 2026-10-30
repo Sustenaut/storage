@@ -72,7 +72,7 @@ without `kept` doesn't unkeep it.
 | `visit-ee` | visit.ee | photos |
 | `opportunity` | opportunity.sustenaut.eu | photos, and pdf, pptx, docx, png, jpg, svg, csv and xlsx files |
 | `publications` (private) | pub.sustenaut.eu's publet objects | each publication release's `publication-0-objects.tar.gz`, uploaded by Sustenaut/business-plan's main and read by Sustenaut/pub-site; all kept |
-| `sources` | schryer/business-plan's sources corpus | papers (pdf) whose licence allows it, signed publet objects (cbor, named by their SHA-256 like any file) and their indexes (json); all kept, and with no `in_use` list nothing is ever cleaned |
+| `sources` | Sustenaut/business-plan's sources corpus | papers (pdf) whose licence allows it, signed publet objects (cbor, named by their SHA-256 like any file) and their indexes (json); all kept, and with no `in_use` list nothing is ever cleaned |
 
 ### Private tenants
 
@@ -167,7 +167,7 @@ bucket.
    Cloudflare account, either in the dashboard or with
    `npx wrangler r2 bucket create sustenaut-storage`.
 2. **The Pages project and the name.** These come from the `storage` site in
-   schryer/business-plan's `pubkit.json`, applied by its infra like
+   Sustenaut/business-plan's `pubkit.json`, applied by its infra like
    maps.sustenaut.eu.
 3. **The deploy's secrets.** In this repository's Actions settings, add the
    secret `CLOUDFLARE_GITHUB_API_TOKEN` (the same Pages-only token maps

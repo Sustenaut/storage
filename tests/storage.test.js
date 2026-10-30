@@ -35,7 +35,7 @@ function bucket() {
 const TENANTS = {
   "visit-ee": { repository: "schryer/visit-ee", origins: ["https://temp.schryer.eu"], in_use: "https://temp.schryer.eu/photos.json" },
   opportunity: {
-    repository: "schryer/business-plan",
+    repository: "Sustenaut/business-plan",
     origins: ["https://opportunity.sustenaut.eu"],
     in_use: "https://opportunity.sustenaut.eu/storage-in-use.json",
     files: { types: ["pdf", "pptx", "png", "svg", "csv"], max_bytes: 1000 },
@@ -49,7 +49,7 @@ beforeEach(() => {
   sitePhotos = [];
   canPush = true;
   inUse = { photos: [], files: [] };
-  appRepos = [{ full_name: "schryer/business-plan", permissions: { admin: false, push: true, pull: true } }];
+  appRepos = [{ full_name: "Sustenaut/business-plan", permissions: { admin: false, push: true, pull: true } }];
   realFetch = globalThis.fetch;
   globalThis.fetch = async (url, options = {}) => {
     url = String(url);
@@ -57,7 +57,7 @@ beforeEach(() => {
       if (options.headers.Authorization !== "Bearer good") return new Response("{}", { status: 401 });
       return Response.json({ permissions: { push: canPush } });
     }
-    if (url === "https://api.github.com/repos/schryer/business-plan") {
+    if (url === "https://api.github.com/repos/Sustenaut/business-plan") {
       if (options.headers.Authorization !== "Bearer good") return new Response("{}", { status: 401 });
       return Response.json({ permissions: { push: canPush } });
     }
@@ -218,7 +218,7 @@ test("a GitHub App installation token uploads when its installation can write to
   assert.equal(env.STORAGE.objects.get(`opportunity/f/${mine.id}/mine.pdf`).customMetadata.for, undefined);
 
   assert.equal((await sendFile("ghs_other", pdf(), { name: "a.pdf" })).status, 403);
-  appRepos = [{ full_name: "schryer/business-plan", permissions: { admin: false, push: false, pull: true } }];
+  appRepos = [{ full_name: "Sustenaut/business-plan", permissions: { admin: false, push: false, pull: true } }];
   assert.equal((await sendFile("ghs_app", pdf("2"), { name: "b.pdf" })).status, 403);
   appRepos = [{ full_name: "schryer/visit-ee", permissions: { admin: false, push: true, pull: true } }];
   assert.equal((await sendFile("ghs_app", pdf("3"), { name: "c.pdf" })).status, 403);
@@ -257,7 +257,7 @@ test("a kept file stays kept when the same file is uploaded again", async () => 
 
 test("the opportunity tenant takes the files the opportunity site needs", () => {
   const t = REAL_TENANTS.opportunity;
-  assert.equal(t.repository, "schryer/business-plan");
+  assert.equal(t.repository, "Sustenaut/business-plan");
   assert.deepEqual(t.origins, ["https://opportunity.sustenaut.eu"]);
   assert.deepEqual(t.files.types, ["pdf", "pptx", "docx", "png", "jpg", "svg", "csv", "xlsx"]);
   assert.equal(REAL_TENANTS["visit-ee"].files, undefined); // photos only
@@ -265,7 +265,7 @@ test("the opportunity tenant takes the files the opportunity site needs", () => 
 
 // --- Sources -----------------------------------------------------------------
 
-const SOURCES = { repository: "schryer/business-plan", origins: [], files: { types: ["pdf", "cbor", "json"], max_bytes: 1000, kept: true } };
+const SOURCES = { repository: "Sustenaut/business-plan", origins: [], files: { types: ["pdf", "cbor", "json"], max_bytes: 1000, kept: true } };
 const sources = (token, bytes, fields) => {
   const form = new FormData();
   form.append("file", new Blob([bytes]), "file.bin");
@@ -309,7 +309,7 @@ test("a tenant without an in_use list has nothing cleaned", async () => {
 
 test("the sources tenant takes papers and publet objects for business-plan, kept and never cleaned", () => {
   const t = REAL_TENANTS.sources;
-  assert.equal(t.repository, "schryer/business-plan");
+  assert.equal(t.repository, "Sustenaut/business-plan");
   assert.equal(t.in_use, undefined);
   assert.deepEqual(t.files, { types: ["pdf", "cbor", "json"], max_bytes: 26214400, kept: true });
 });

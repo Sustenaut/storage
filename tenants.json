@@ -5,7 +5,7 @@
     "in_use": "https://temp.schryer.eu/photos.json"
   },
   "opportunity": {
-    "repository": "schryer/business-plan",
+    "repository": "Sustenaut/business-plan",
     "origins": ["https://opportunity.sustenaut.eu"],
     "in_use": "https://opportunity.sustenaut.eu/storage-in-use.json",
     "files": {
@@ -14,7 +14,7 @@
     }
   },
   "sources": {
-    "repository": "schryer/business-plan",
+    "repository": "Sustenaut/business-plan",
     "origins": [],
     "files": {
       "types": ["pdf", "cbor", "json"],
