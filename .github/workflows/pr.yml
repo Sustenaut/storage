@@ -4,6 +4,7 @@ name: pr
 
 on:
   pull_request:
+  merge_group:
 
 permissions:
   contents: read
@@ -11,12 +12,12 @@ permissions:
 jobs:
   checks:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@724684ec5a40ffb62414d72915bc65b1b7476d9f # v0.18.0
+    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@7914b2abb933747e303f5f981d8335d3704dcdb3 # v0.21.0
     with: {"shellcheck": "with-secrets"}
 
   tests:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@724684ec5a40ffb62414d72915bc65b1b7476d9f # v0.18.0
+    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@7914b2abb933747e303f5f981d8335d3704dcdb3 # v0.21.0
     with: {"setup": "npm ci", "test": "npm test"}
 
   # The site as deploy-static checks it before a deploy, so a site that
@@ -26,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: Sustenaut/pubkit/actions/deploy-static@724684ec5a40ffb62414d72915bc65b1b7476d9f # v0.18.0
+      - uses: Sustenaut/pubkit/actions/deploy-static@7914b2abb933747e303f5f981d8335d3704dcdb3 # v0.21.0
         with: {"dir": "public", "check-only": "true"}
 
   # The one check a ruleset requires: it passes only when every job
