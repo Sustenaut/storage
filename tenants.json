@@ -8,6 +8,11 @@
     "in_use": "https://temp.schryer.eu/photos.json"
   },
   "opportunity": {
+    "private": true,
+    "editors": true,
+    "read": [
+      "k8s:opportunity/app"
+    ],
     "repository": "Sustenaut/business-plan",
     "write": [
       "k8s:opportunity/app"
@@ -15,7 +20,6 @@
     "origins": [
       "https://opportunity.sustenaut.eu"
     ],
-    "in_use": "https://opportunity.sustenaut.eu/storage-in-use.json",
     "files": {
       "types": [
         "pdf",
@@ -31,6 +35,11 @@
     }
   },
   "sources": {
+    "private": true,
+    "editors": true,
+    "read": [
+      "github:Sustenaut/business-plan@refs/heads/main"
+    ],
     "repository": "Sustenaut/business-plan",
     "origins": [],
     "files": {

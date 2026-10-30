@@ -73,10 +73,10 @@ without `kept` doesn't unkeep it.
 | Tenant | Site | Keeps |
 |---|---|---|
 | `visit-ee` | visit.ee | photos |
-| `opportunity` | opportunity.sustenaut.eu | photos, and pdf, pptx, docx, png, jpg, svg, csv and xlsx files |
+| `opportunity` (private) | opportunity.sustenaut.eu | photos, and pdf, pptx, docx, png, jpg, svg, csv and xlsx files |
 | `publications` (private) | pub.sustenaut.eu's publet objects | each publication release's `publication-0-objects.tar.gz`, uploaded by Sustenaut/business-plan's main and read by Sustenaut/pub-site and Sustenaut/estimate; all kept |
 | `release-sustenaut`, `release-schryer` (private) | the release control plane's board snapshots, one tenant per GitHub owner | json files, all kept, written by Sustenaut/release-controlplane's main and read by the release app; a `board` head names the latest |
-| `sources` | Sustenaut/business-plan's sources corpus | papers (pdf) whose licence allows it, signed publet objects (cbor, named by their SHA-256 like any file) and their indexes (json); all kept, and with no `in_use` list nothing is ever cleaned |
+| `sources` (private) | Sustenaut/business-plan's sources corpus | papers (pdf) whose licence allows it, signed publet objects (cbor, named by their SHA-256 like any file) and their indexes (json); all kept, never cleaned; read by business-plan's main (the review site's image build) |
 
 ### Private tenants
 
@@ -93,8 +93,13 @@ A principal is `github:<owner>/<repo>` (any ref) or
 `github:<owner>/<repo>@<ref>` (only that ref, such as
 `refs/heads/main`): a GitHub Actions job of that repository. `auth:<client>`, a
 client of auth.sustenaut.eu, is ready in `src/jwt.js`, waiting for its
-issuer to be turned on. Personal tokens and GitHub App tokens are never
-taken by a private tenant, and it needs no `repository`.
+issuer to be turned on. Personal tokens and GitHub App tokens are not taken by a private tenant,
+and it needs no `repository`, unless it says `"editors": true`: then a GitHub
+token that may push to its `repository` may read and write it too, each time
+checked with GitHub. `sources` and `opportunity` do, because people upload to
+`sources` from their own machines (`make sources-upload`), where no workflow
+token exists. Nothing is public until an explicit publishing step puts it
+somewhere public.
 
 `k8s:<namespace>/<account>` is a pod on the Sustenaut k3s server, by its
 projected service-account token (below).
