@@ -92,6 +92,9 @@ client of auth.sustenaut.eu, is ready in `src/jwt.js`, waiting for its
 issuer to be turned on. Personal tokens and GitHub App tokens are never
 taken by a private tenant, and it needs no `repository`.
 
+`k8s:<namespace>/<account>` is a pod on the Sustenaut k3s server, by its
+projected service-account token (below).
+
 A token is taken only if it is RS256, from a trusted issuer (only
 `https://token.actions.githubusercontent.com` for now), signed by a key in
 that issuer's published key set, for the audience `storage.sustenaut.eu`,
@@ -115,6 +118,40 @@ token=$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
 curl -fsS -H "Authorization: Bearer $token" -F file=@publication-0-objects.tar.gz \
   https://storage.sustenaut.eu/publications/files
 ```
+
+### Pods on the k3s server
+
+A pod uploads with a service-account token Kubernetes projects into it for
+the audience `storage.sustenaut.eu`; no secret is stored anywhere. Its
+principal is `k8s:<namespace>/<account>` (the opportunity site:
+`k8s:opportunity/app`, in the `opportunity` tenant's `write`). The token
+must name exactly `system:serviceaccount:<namespace>:<account>`, be for this
+audience, unexpired, and signed by a key in `src/k8s.json`. The server's API
+isn't public, so its keys are pinned there rather than fetched: k3s's issuer
+name is the same in every cluster, and the key is what makes a token ours.
+
+In the pod (business-plan's `opportunity-site/k8s/app.yaml`): a dedicated
+service account with no RBAC bindings, `automountServiceAccountToken: false`,
+and only a projected token volume (audience `storage.sustenaut.eu`,
+`expirationSeconds: 600`), read from its file on each upload. It never goes
+in an environment variable, an image, git or a log. This service logs
+nothing of a request but errors.
+
+**Revoking a pod's access:** take its principal out of the tenant's `write`
+and deploy (immediate); delete the service account too
+(`k3s kubectl -n <namespace> delete serviceaccount <account>`), which
+invalidates its tokens on the server.
+
+**Rotating the k3s signing key** (or a new server): put the new public keys in
+`src/k8s.json` first, alongside the old, and deploy; then rotate
+(`/var/lib/rancher/k3s/server/tls/service.key`, restart k3s); then remove the
+old key. Read the keys with
+
+```sh
+ssh root@sustenaut k3s kubectl get --raw /openid/v1/jwks
+```
+
+The tests fail while `src/k8s.json` has no keys.
 
 A file's id is its SHA-256, so a reader that knows the hash it wants also
 knows the address: `/publications/f/<sha256>/<name>`.

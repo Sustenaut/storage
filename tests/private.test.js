@@ -229,3 +229,53 @@ test("the clean-up leaves a private tenant alone", async () => {
   assert.deepEqual(report.publications, { skipped: "private: nothing is cleaned" });
   assert.equal(env.STORAGE.objects.size, 1);
 });
+
+// The k3s server's projected service-account tokens, against a pinned key set.
+const K8S_ISSUER = "https://kubernetes.default.svc.cluster.local";
+const k8sKey = await crypto.subtle.generateKey(RSA, true, ["sign", "verify"]);
+const k8sIssuers = {
+  [K8S_ISSUER]: {
+    ...(await import("../src/jwt.js")).ISSUERS[K8S_ISSUER],
+    keys: { keys: [{ ...(await crypto.subtle.exportKey("jwk", k8sKey.publicKey)), kid: "k8s1", use: "sig" }] },
+  },
+};
+async function podToken(ns = "opportunity", sa = "app", { claims = {}, key = k8sKey.privateKey, kid = "k8s1" } = {}) {
+  const h = b64url(JSON.stringify({ alg: "RS256", kid }));
+  const body = {
+    iss: K8S_ISSUER, aud: [AUDIENCE], sub: `system:serviceaccount:${ns}:${sa}`, iat: now(), nbf: now(), exp: now() + 600,
+    "kubernetes.io": { namespace: ns, serviceaccount: { name: sa, uid: "u" }, pod: { name: "app-1", uid: "p" } }, ...claims,
+  };
+  const p = b64url(JSON.stringify(body));
+  const s = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(`${h}.${p}`));
+  return `${h}.${p}.${b64url(new Uint8Array(s))}`;
+}
+
+test("a pod's service-account token names its namespace and account, against the pinned keys, without fetching", async () => {
+  assert.equal(await verify(await podToken(), { issuers: k8sIssuers }), "k8s:opportunity/app");
+  assert.ok(!fetches.includes(K8S_ISSUER), "pinned keys are never fetched");
+  const refused = async (t) => assert.rejects(verify(t, { issuers: k8sIssuers }), (err) => err.status === 401);
+  await refused(await podToken("opportunity", "app", { claims: { aud: ["https://kubernetes.default.svc.cluster.local", "k3s"] } }));
+  await refused(await podToken("opportunity", "app", { claims: { exp: now() - 120 } }));
+  await refused(await podToken("opportunity", "app", { claims: { sub: "system:serviceaccount:opportunity:default" } }));
+  await refused(await podToken("opportunity", "app", { claims: { "kubernetes.io": {} } }));
+  await refused(await podToken("opportunity", "app", { key: otherKey.privateKey }));
+  await refused(await podToken("opportunity", "app", { kid: "k8s2" }));
+  // Another cluster has the same issuer name but not this key.
+  await refused(await podToken("opportunity", "app", { key: issuerKey.privateKey, kid: "k8s1" }));
+});
+
+test("the opportunity tenant takes the opportunity app's pod token, and no other account's", () => {
+  const t = REAL_TENANTS.opportunity;
+  assert.deepEqual(t.write, ["k8s:opportunity/app"]);
+  assert.ok(allowed("k8s:opportunity/app", t.write));
+  assert.ok(!allowed("k8s:opportunity/default", t.write));
+  assert.ok(!allowed("k8s:auth/app", t.write));
+  assert.equal(t.repository, "Sustenaut/business-plan", "editors' GitHub tokens still work");
+});
+
+test("the pinned k3s key set is the server's: an issuer and RSA signing keys", async () => {
+  const K8S = (await import("../src/k8s.json", { with: { type: "json" } })).default;
+  assert.equal(K8S.issuer, K8S_ISSUER);
+  assert.ok(K8S.jwks.keys.length > 0, "src/k8s.json has no keys yet: put the server's /openid/v1/jwks in it");
+  for (const k of K8S.jwks.keys) assert.equal(k.kty, "RSA");
+});

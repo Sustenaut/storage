@@ -6,6 +6,7 @@
   },
   "opportunity": {
     "repository": "Sustenaut/business-plan",
+    "write": ["k8s:opportunity/app"],
     "origins": ["https://opportunity.sustenaut.eu"],
     "in_use": "https://opportunity.sustenaut.eu/storage-in-use.json",
     "files": {

@@ -7,12 +7,23 @@
 //   github:<owner>/<repo>@<ref>   a GitHub Actions job, from its OIDC token
 //                                 (permissions: id-token: write, audience
 //                                 storage.sustenaut.eu)
+//   k8s:<namespace>/<account>     a pod on the Sustenaut k3s server, from
+//                                 its projected service-account token
+//                                 (audience storage.sustenaut.eu)
 //   auth:<client>                 a client of auth.sustenaut.eu (Keycloak),
 //                                 once its issuer is added here
 //
 // A token must be RS256, for the audience AUDIENCE, from a trusted issuer,
 // signed by a key of that issuer's key set, and not expired or not yet
 // valid (with LEEWAY seconds of clock skew). Anything else is refused.
+//
+// The k3s server's keys are pinned in k8s.json rather than fetched: its API
+// isn't public. Its issuer name is k3s's default, which every cluster shares,
+// so the pinned key is what makes a token ours. A new cluster (or a rotated
+// service-account key) needs k8s.json updated, from
+//   ssh root@sustenaut k3s kubectl get --raw /openid/v1/jwks
+
+import K8S from "./k8s.json" with { type: "json" };
 
 export const AUDIENCE = "storage.sustenaut.eu";
 const LEEWAY = 60;
@@ -23,6 +34,14 @@ export const ISSUERS = {
   "https://token.actions.githubusercontent.com": {
     jwks: "https://token.actions.githubusercontent.com/.well-known/jwks",
     principal: (c) => (c.repository && c.ref ? `github:${c.repository}@${c.ref}` : null),
+  },
+  [K8S.issuer]: {
+    keys: K8S.jwks,
+    principal: (c) => {
+      const k = c["kubernetes.io"] || {};
+      const ns = k.namespace, sa = k.serviceaccount?.name;
+      return ns && sa && c.sub === `system:serviceaccount:${ns}:${sa}` ? `k8s:${ns}/${sa}` : null;
+    },
   },
   // auth.sustenaut.eu, when a client there asks for this audience:
   // "https://auth.sustenaut.eu/realms/sustenaut": {
@@ -48,7 +67,7 @@ export async function verify(token, { issuers = ISSUERS, now = Date.now() } = {}
   if (header.alg !== "RS256") throw unauthorized("tokens must be RS256");
   const issuer = Object.hasOwn(issuers, claims.iss) ? issuers[claims.iss] : null;
   if (!issuer) throw unauthorized("an issuer this service doesn't trust");
-  const key = await keyFor(issuer.jwks, header.kid, now);
+  const key = issuer.keys ? await pinnedKey(issuer.keys, header.kid) : await keyFor(issuer.jwks, header.kid, now);
   const ok = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, b64url(s), new TextEncoder().encode(`${h}.${p}`));
   if (!ok) throw unauthorized("a bad signature");
   const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
@@ -92,6 +111,16 @@ async function keyFor(url, kid, now) {
   return key;
 }
 
+// A pinned key set, imported once.
+const pinned = new WeakMap(); // jwks object -> Promise(Map(kid -> CryptoKey))
+
+async function pinnedKey(jwks, kid) {
+  if (!pinned.has(jwks)) pinned.set(jwks, importKeys(jwks.keys || []));
+  const key = (await pinned.get(jwks)).get(kid);
+  if (!key) throw unauthorized("a key this service doesn't know");
+  return key;
+}
+
 async function fetchKeys(url, now, old) {
   const response = await fetch(url).catch(() => null);
   if (!response?.ok) {
@@ -99,13 +128,17 @@ async function fetchKeys(url, now, old) {
     throw unauthorized("the issuer's keys can't be read now");
   }
   const { keys = [] } = await response.json();
+  return { at: now, tried: now, keys: await importKeys(keys) };
+}
+
+async function importKeys(keys) {
   const imported = new Map();
   for (const jwk of keys) {
     if (jwk.kty !== "RSA" || (jwk.use && jwk.use !== "sig") || !jwk.kid) continue;
     const { kty, n, e } = jwk;
     imported.set(jwk.kid, await crypto.subtle.importKey("jwk", { kty, n, e, alg: "RS256", ext: true }, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]));
   }
-  return { at: now, tried: now, keys: imported };
+  return imported;
 }
 
 // For the tests: forget the key sets.

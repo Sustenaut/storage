@@ -1,0 +1,5 @@
+{
+  "comment": "The Sustenaut k3s server's service-account token issuer and its public keys (src/jwt.js pins them). Update from: ssh root@sustenaut k3s kubectl get --raw /.well-known/openid-configuration (issuer) and k3s kubectl get --raw /openid/v1/jwks (jwks).",
+  "issuer": "https://kubernetes.default.svc.cluster.local",
+  "jwks": { "keys": [] }
+}
