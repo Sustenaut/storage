@@ -46,7 +46,8 @@
   "publications": {
     "private": true,
     "read": [
-      "github:Sustenaut/pub-site"
+      "github:Sustenaut/pub-site",
+      "github:Sustenaut/estimate"
     ],
     "write": [
       "github:Sustenaut/business-plan@refs/heads/main"

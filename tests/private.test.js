@@ -102,7 +102,7 @@ test("the publications tenant is private: business-plan's main writes it, pub-si
   const t = REAL_TENANTS.publications;
   assert.equal(t.private, true);
   assert.deepEqual(t.write, ["github:Sustenaut/business-plan@refs/heads/main"]);
-  assert.deepEqual(t.read, ["github:Sustenaut/pub-site"]);
+  assert.deepEqual(t.read, ["github:Sustenaut/pub-site", "github:Sustenaut/estimate"]);
   assert.deepEqual(t.files.types, ["gz"]);
   assert.equal(t.files.kept, true);
   assert.equal(t.in_use, undefined);
