@@ -49,7 +49,7 @@ function bucket() {
   };
 }
 
-const WRITE = "Sustenaut/release";
+const WRITE = "Sustenaut/release-controlplane";
 const TENANTS = {
   snaps: { private: true, heads: true, read: ["github:Sustenaut/reader"], write: [`github:${WRITE}@refs/heads/main`], files: { types: ["json"], kept: true } },
   noheads: { private: true, read: [], write: [`github:${WRITE}@refs/heads/main`], files: { types: ["json"], kept: true } },
@@ -262,12 +262,12 @@ test("a tenant without heads, or a public one, has none", async () => {
   assert.equal((await request("/open/head/board", { as: null })).status, 404);
 });
 
-test("the release tenants: private, json, kept, written by Sustenaut/release's main, read by the app", () => {
+test("the release tenants: private, json, kept, written by Sustenaut/release-controlplane's main, read by the app", () => {
   for (const name of ["release-sustenaut", "release-schryer"]) {
     const t = REAL_TENANTS[name];
     assert.equal(t.private, true);
     assert.equal(t.heads, true);
-    assert.deepEqual(t.write, ["github:Sustenaut/release@refs/heads/main"]);
+    assert.deepEqual(t.write, ["github:Sustenaut/release-controlplane@refs/heads/main"]);
     assert.deepEqual(t.read, ["k8s:release/app"]);
     assert.deepEqual(t.files.types, ["json"]);
     assert.equal(t.files.kept, true);
