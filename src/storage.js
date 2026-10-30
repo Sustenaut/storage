@@ -230,7 +230,8 @@ async function writer(request, tenant) {
   if (isJwt(token)) {
     const principal = await verify(token);
     if (!allowed(principal, tenant.write)) throw status(403, `${principal} may not write here`);
-    return { login: principal, app: false };
+    // A service on the server uploads for a person, as an app does: it may say whom ("for").
+    return { login: principal, app: principal.startsWith("k8s:") };
   }
   if (tenant.private || !tenant.repository) throw status(401, "this tenant takes OpenID Connect tokens only");
   return editor(request, tenant.repository);
