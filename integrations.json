@@ -1,0 +1,47 @@
+{
+  "uses": [
+    {
+      "plugin": "bitwarden.secrets",
+      "paths": [
+        "with-secrets"
+      ]
+    },
+    {
+      "plugin": "cloudflare.pages",
+      "paths": [
+        ".github/workflows/deploy.yml"
+      ]
+    },
+    {
+      "plugin": "cloudflare.r2",
+      "paths": [
+        "wrangler.toml"
+      ]
+    },
+    {
+      "plugin": "github.actions-oidc",
+      "paths": [
+        "src/jwt.js"
+      ]
+    },
+    {
+      "plugin": "github.repo-ops",
+      "paths": [
+        "src/storage.js"
+      ]
+    }
+  ],
+  "own_hosts": [
+    "sustenaut.eu"
+  ],
+  "exclude": [
+    {
+      "path": "tests/**",
+      "reason": "Fakes and test data"
+    },
+    {
+      "path": "**/*.test.js",
+      "reason": "Fakes and test data"
+    }
+  ]
+}
