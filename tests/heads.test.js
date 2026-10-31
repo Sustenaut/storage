@@ -262,15 +262,21 @@ test("a tenant without heads, or a public one, has none", async () => {
   assert.equal((await request("/open/head/board", { as: null })).status, 404);
 });
 
-test("the release tenants: private, json, kept, written by Sustenaut/release-controlplane's main, read by the app", () => {
-  for (const name of ["release-sustenaut", "release-schryer"]) {
+test("each release tenant is read by its own deployment alone", () => {
+  for (const [name, reader] of [["release-sustenaut", "k8s:release/app"], ["release-schryer", "k8s:release-schryer/app"]]) {
     const t = REAL_TENANTS[name];
     assert.equal(t.private, true);
     assert.equal(t.heads, true);
     assert.deepEqual(t.write, ["github:Sustenaut/release-controlplane@refs/heads/main"]);
-    assert.deepEqual(t.read, ["k8s:release/app"]);
+    assert.deepEqual(t.read, [reader]);
     assert.deepEqual(t.files.types, ["json"]);
     assert.equal(t.files.kept, true);
     assert.equal(t.repository, undefined);
   }
+});
+
+test("one deployment's token can't read the other's tenant", () => {
+  const can = (tenant, principal) => [...REAL_TENANTS[tenant].read, ...REAL_TENANTS[tenant].write].includes(principal);
+  assert.equal(can("release-sustenaut", "k8s:release-schryer/app"), false);
+  assert.equal(can("release-schryer", "k8s:release/app"), false);
 });

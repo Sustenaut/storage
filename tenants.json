@@ -92,7 +92,7 @@
     "private": true,
     "heads": true,
     "read": [
-      "k8s:release/app"
+      "k8s:release-schryer/app"
     ],
     "write": [
       "github:Sustenaut/release-controlplane@refs/heads/main"
