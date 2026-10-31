@@ -4,31 +4,36 @@
       "plugin": "bitwarden.secrets",
       "paths": [
         "with-secrets"
-      ]
+      ],
+      "mode": "required"
     },
     {
       "plugin": "cloudflare.pages",
       "paths": [
         ".github/workflows/deploy.yml"
-      ]
+      ],
+      "mode": "required"
     },
     {
       "plugin": "cloudflare.r2",
       "paths": [
         "wrangler.toml"
-      ]
+      ],
+      "mode": "required"
     },
     {
       "plugin": "github.actions-oidc",
       "paths": [
         "src/jwt.js"
-      ]
+      ],
+      "mode": "required"
     },
     {
       "plugin": "github.repo-ops",
       "paths": [
         "src/storage.js"
-      ]
+      ],
+      "mode": "required"
     }
   ],
   "own_hosts": [
