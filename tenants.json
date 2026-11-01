@@ -55,8 +55,25 @@
       "kept": true
     }
   },
+  "facts": {
+    "private": true,
+    "editors": true,
+    "read": [
+      "github:Sustenaut/business-plan@refs/heads/main"
+    ],
+    "repository": "Sustenaut/business-plan",
+    "files": {
+      "types": [
+        "cbor"
+      ],
+      "max_bytes": 26214400,
+      "kept": true
+    }
+  },
   "publications": {
     "private": true,
+    "editors": true,
+    "repository": "Sustenaut/business-plan",
     "read": [
       "github:Sustenaut/pub-site",
       "github:Sustenaut/estimate"

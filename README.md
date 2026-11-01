@@ -76,6 +76,7 @@ without `kept` doesn't unkeep it.
 | `opportunity` (private) | opportunity.sustenaut.eu | photos, and pdf, pptx, docx, png, jpg, svg, csv and xlsx files |
 | `publications` (private) | pub.sustenaut.eu's publet objects | each publication release's `publication-0-objects.tar.gz`, uploaded by Sustenaut/business-plan's main and read by Sustenaut/pub-site and Sustenaut/estimate; all kept |
 | `release-sustenaut`, `release-schryer` (private) | the release control plane's board snapshots, one tenant per GitHub owner | json files, all kept, written by Sustenaut/release-controlplane's main, and each read by its own owner's deployment alone (`k8s:release/app`, `k8s:release-schryer/app`); a `board` head names the latest |
+| `facts` (private) | Sustenaut/business-plan's facts registry | its signed publet objects (cbor), all kept; uploaded by its editors from their own machines and read by business-plan's main |
 | `sources` (private, its pdfs public) | Sustenaut/business-plan's sources corpus | papers (pdf) whose licence allows it, which come from elsewhere and stay public at the addresses signed records name; signed publet objects (cbor, named by their SHA-256 like any file) and their indexes (json); all kept, never cleaned; read by business-plan's main (the review site's image build) |
 
 ### Private tenants
@@ -96,8 +97,8 @@ client of auth.sustenaut.eu, is ready in `src/jwt.js`, waiting for its
 issuer to be turned on. Personal tokens and GitHub App tokens are not taken by a private tenant,
 and it needs no `repository`, unless it says `"editors": true`: then a GitHub
 token that may push to its `repository` may read and write it too, each time
-checked with GitHub. `sources` and `opportunity` do, because people upload to
-`sources` from their own machines (`make sources-upload`), where no workflow
+checked with GitHub. `sources`, `facts`, `publications` and `opportunity` do, because people upload
+from their own machines (`make sources-upload` and the like), where no workflow
 token exists. Nothing is public until an explicit publishing step puts it
 somewhere public, with one exception: `"public_types"` lists file types of a
 private tenant that anyone may read, cached like a public tenant's. `sources`

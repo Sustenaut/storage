@@ -46,7 +46,8 @@ function bucket() {
 }
 
 const TENANTS = {
-  publications: REAL_TENANTS.publications,
+  // Closed to GitHub tokens, to test a private tenant without "editors".
+  publications: { ...REAL_TENANTS.publications, editors: false },
   // A public tenant that also takes a workflow's uploads.
   photos: { repository: "schryer/visit-ee", origins: [], write: ["github:schryer/visit-ee@refs/heads/main"], files: { types: ["pdf"] } },
   // A public tenant that takes only GitHub tokens.
@@ -106,7 +107,8 @@ test("the publications tenant is private: business-plan's main writes it, pub-si
   assert.deepEqual(t.files.types, ["gz"]);
   assert.equal(t.files.kept, true);
   assert.equal(t.in_use, undefined);
-  assert.equal(t.repository, undefined, "no GitHub token can write it");
+  assert.equal(t.editors, true, "its objects are composed on a person's machine");
+  assert.equal(t.repository, "Sustenaut/business-plan");
 });
 
 test("a workflow's token writes a private file, and a reader gets it, never cached or shared", async () => {

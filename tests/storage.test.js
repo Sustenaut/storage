@@ -364,6 +364,17 @@ test("a private tenant's public_types are open to anyone, and nothing else in it
   assert.equal((await handle(new Request("https://storage.example/sources/files", { method: "POST", body: fake, headers: { Authorization: "Bearer good" } }), env, tenants)).status, 400);
 });
 
+test("the facts tenant is private: business-plan's editors upload, its main reads, kept, signed objects only", () => {
+  const t = REAL_TENANTS.facts;
+  assert.equal(t.private, true);
+  assert.equal(t.editors, true);
+  assert.equal(t.repository, "Sustenaut/business-plan");
+  assert.deepEqual(t.read, ["github:Sustenaut/business-plan@refs/heads/main"]);
+  assert.deepEqual(t.files.types, ["cbor"]);
+  assert.equal(t.files.kept, true);
+  assert.equal(t.public_types, undefined);
+});
+
 test("the sources tenant is private: business-plan's main reads it, its editors still upload, kept and never cleaned", () => {
   const t = REAL_TENANTS.sources;
   assert.equal(t.private, true);
