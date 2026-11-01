@@ -89,6 +89,19 @@
       "kept": true
     }
   },
+  "pdc": {
+    "write": [
+      "github:Sustenaut/pub-site@refs/heads/main"
+    ],
+    "files": {
+      "types": [
+        "cbor",
+        "json"
+      ],
+      "max_bytes": 26214400,
+      "kept": true
+    }
+  },
   "release-sustenaut": {
     "private": true,
     "heads": true,
