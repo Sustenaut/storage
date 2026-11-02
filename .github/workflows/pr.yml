@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: Sustenaut/pubkit/actions/deploy-static@7914b2abb933747e303f5f981d8335d3704dcdb3 # v0.21.0
+      - uses: Sustenaut/pubkit/actions/deploy-static@24b6c7ba012a758fa9741c530d224ddad3f2c0dc # v0.24.0
         with: {"dir": "public", "check-only": "true"}
 
   # The one check a ruleset requires: it passes only when every job
