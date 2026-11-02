@@ -76,7 +76,7 @@ without `kept` doesn't unkeep it.
 | `opportunity` (private) | opportunity.sustenaut.eu | photos, and pdf, pptx, docx, png, jpg, svg, csv and xlsx files |
 | `publications` (private) | pub.sustenaut.eu's publet objects | each publication release's `publication-0-objects.tar.gz`, uploaded by Sustenaut/business-plan's main and read by Sustenaut/pub-site and Sustenaut/estimate; all kept |
 | `release-sustenaut`, `release-schryer` (private) | the release control plane's board snapshots, one tenant per GitHub owner | json files, all kept, written by Sustenaut/release-controlplane's main, and each read by its own owner's deployment alone (`k8s:release/app`, `k8s:release-schryer/app`); a `board` head names the latest |
-| `integrations-overflow` (private) | the integrations service's call log files that BigQuery couldn't take: Avro, and json manifests behind heads, all kept; written by its ingest pod |
+| `calls-integrations`, `calls-visit-ee`, `calls-opportunity-site`, `calls-business-plan` (private) | the integrations call log's files BigQuery couldn't take, one tenant per consuming project: Avro, and json manifests behind heads, all kept; written by its ingest pod |
 | `facts` (private) | Sustenaut/business-plan's facts registry | its signed publet objects (cbor), all kept; uploaded by its editors from their own machines and read by business-plan's main |
 | `sources` (private, its pdfs public) | Sustenaut/business-plan's sources corpus | papers (pdf) whose licence allows it, which come from elsewhere and stay public at the addresses signed records name; signed publet objects (cbor, named by their SHA-256 like any file) and their indexes (json); all kept, never cleaned; read by business-plan's main (the review site's image build) |
 

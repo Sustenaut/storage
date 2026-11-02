@@ -122,7 +122,61 @@
       "kept": true
     }
   },
-  "integrations-overflow": {
+  "calls-integrations": {
+    "private": true,
+    "heads": true,
+    "read": [
+      "k8s:integrations/ingest"
+    ],
+    "write": [
+      "k8s:integrations/ingest"
+    ],
+    "files": {
+      "types": [
+        "avro",
+        "json"
+      ],
+      "max_bytes": 52428800,
+      "kept": true
+    }
+  },
+  "calls-visit-ee": {
+    "private": true,
+    "heads": true,
+    "read": [
+      "k8s:integrations/ingest"
+    ],
+    "write": [
+      "k8s:integrations/ingest"
+    ],
+    "files": {
+      "types": [
+        "avro",
+        "json"
+      ],
+      "max_bytes": 52428800,
+      "kept": true
+    }
+  },
+  "calls-opportunity-site": {
+    "private": true,
+    "heads": true,
+    "read": [
+      "k8s:integrations/ingest"
+    ],
+    "write": [
+      "k8s:integrations/ingest"
+    ],
+    "files": {
+      "types": [
+        "avro",
+        "json"
+      ],
+      "max_bytes": 52428800,
+      "kept": true
+    }
+  },
+  "calls-business-plan": {
     "private": true,
     "heads": true,
     "read": [
