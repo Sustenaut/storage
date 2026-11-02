@@ -17,6 +17,11 @@
 //                                               at, for tenants with "heads"
 //   PUT  /<tenant>/head/<name>                  move the head to a stored file
 //   GET  /<tenant>/head/<name>/log              where the head has pointed
+//   PUT  /<tenant>/<inbox|batches|rejected>/... a file in a buffer, for tenants
+//                                               with "inbox"
+//   GET  /<tenant>/<inbox|batches|rejected>/... that file
+//   DELETE the same                             that file, for the "delete" list
+//   GET  /<tenant>/list?prefix=...              the buffer's files, oldest name first
 //   POST /_clean                                the nightly clean-up
 //
 // An upload is the sizes the editor made in the browser (multipart fields
@@ -55,6 +60,13 @@
 // first writes the head's current place to its log, so a move that fails
 // leaves a true entry behind, and none is ever missing.
 
+// A buffer is a private tenant with "inbox": true: files waiting for a job to take
+// them and delete them, in folders it can list. Unlike everything else here a file
+// in it is named by its sender and goes away, so a file's place says what it is:
+// inbox/ and rejected/ hold Avro, batches/ holds json. Sending the same name again
+// replaces the file, which is how a sender retries, as its name holds a hash of it.
+// Deleting takes a place on the tenant's "delete" list, not just its "write" list.
+
 import { isJwt, verify, allowed } from "./jwt.js";
 import TENANTS from "../tenants.json" with { type: "json" };
 
@@ -70,6 +82,10 @@ const FILE_MAX_BYTES = 25 * 1024 * 1024; // when the tenant names none; Pages ta
 const LABEL_CHARS = 200;
 const HEAD = /^\/([a-z0-9-]+)\/head\/([a-z0-9][a-z0-9._-]{0,63})(\/log)?$/;
 const HASH = /^[0-9a-f]{64}$/;
+const BUFFER = /^\/([a-z0-9-]+)\/((inbox|rejected)\/(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/){0,5}[A-Za-z0-9][A-Za-z0-9._-]{0,119}\.avro|batches\/[A-Za-z0-9][A-Za-z0-9._-]{0,119}\.json)$/;
+const BUFFER_PREFIX = /^(inbox|batches|rejected)\/(?:[A-Za-z0-9][A-Za-z0-9._-]*\/)*(?:[A-Za-z0-9][A-Za-z0-9._-]*)?$/;
+const BUFFER_MAX_BYTES = 50 * 1024 * 1024;
+const LIST_LIMIT = 1000;
 
 // The file types a tenant may allow: Content-Type, whether a browser shows
 // it inline, and a check of its first bytes.
@@ -122,6 +138,10 @@ export async function handle(request, env, tenants = TENANTS) {
       return json(await clean(env, tenants, now), 200);
     }
     if (!tenant) throw status(404, "not found");
+    if (tenant.private && tenant.inbox) {
+      const answered = await buffer(request, env, url, tenantId, tenant);
+      if (answered) return answered;
+    }
     if (request.method === "GET" || request.method === "HEAD") return await serve(url, env, request, tenant);
     if (request.method === "PUT") return await moveHead(request, env, url, tenant);
     if (request.method === "POST" && url.pathname === `/${tenantId}/upload`) return json(await upload(request, env, tenantId, tenant), 200, cors);
@@ -130,6 +150,53 @@ export async function handle(request, env, tenants = TENANTS) {
   } catch (err) {
     return json({ error: err.message }, err.status || 500, cors);
   }
+}
+
+// A request for a tenant's buffer; nothing if it's for something else.
+async function buffer(request, env, url, tenantId, tenant) {
+  const headers = privateHeaders(request, tenant);
+  if (url.pathname === `/${tenantId}/list` && request.method === "GET") {
+    await reader(request, tenant);
+    const prefix = url.searchParams.get("prefix") || "";
+    if (!BUFFER_PREFIX.test(prefix)) throw status(400, "the prefix is inbox/, batches/ or rejected/ and folders under it");
+    const asked = Number(url.searchParams.get("limit") || LIST_LIMIT);
+    if (!Number.isInteger(asked) || asked < 1 || asked > LIST_LIMIT) throw status(400, `the limit is 1 to ${LIST_LIMIT}`);
+    const page = await env.STORAGE.list({
+      prefix: `${tenantId}/${prefix}`,
+      limit: asked,
+      cursor: url.searchParams.get("cursor") || undefined,
+    });
+    const files = page.objects.map((o) => ({ name: o.key.slice(tenantId.length + 1), size: o.size, uploaded: o.uploaded }));
+    return json({ files, cursor: page.truncated ? page.cursor : null }, 200, headers);
+  }
+  const route = url.pathname.match(BUFFER);
+  if (!route || route[1] !== tenantId) return null;
+  const key = url.pathname.slice(1);
+  if (request.method === "PUT") {
+    await writer(request, tenant);
+    const bytes = new Uint8Array(await request.arrayBuffer());
+    if (bytes.length > BUFFER_MAX_BYTES) throw status(413, `the file is over ${BUFFER_MAX_BYTES} bytes`);
+    const kind = FILE_TYPES[extension(key)];
+    if (!kind.check(bytes)) throw status(400, `${route[2]} is not ${extension(key)}`);
+    await env.STORAGE.put(key, bytes);
+    return json({ name: route[2], size: bytes.length }, 200, headers);
+  }
+  if (request.method === "GET" || request.method === "HEAD") {
+    await reader(request, tenant);
+    const object = await env.STORAGE.get(key);
+    if (!object) throw status(404, "not found");
+    const type = FILE_TYPES[extension(key)].type;
+    return new Response(request.method === "HEAD" ? null : object.body, { headers: { "Content-Type": type, ...headers } });
+  }
+  if (request.method === "DELETE") {
+    const token = bearer(request);
+    if (!isJwt(token)) throw status(401, "deleting takes an OpenID Connect token");
+    const principal = await verify(token);
+    if (!allowed(principal, tenant.delete)) throw status(403, `${principal} may not delete here`);
+    await env.STORAGE.delete(key);
+    return new Response(null, { status: 204, headers });
+  }
+  throw status(405, "not allowed");
 }
 
 // A photo, from Cloudflare's cache where it can be (the Cache API works on

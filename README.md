@@ -24,6 +24,10 @@ part of the bucket:
 | `GET /<tenant>/head/<name>` | The file a named head points at, with its hash as `ETag`, for a private tenant with `heads` (below). |
 | `PUT /<tenant>/head/<name>` | Moves the head to a stored file. |
 | `GET /<tenant>/head/<name>/log` | Where the head has pointed, newest first. |
+| `PUT /<tenant>/<inbox\|batches\|rejected>/...` | Stores a file in a buffer, for a private tenant with `inbox` (below). |
+| `GET /<tenant>/<inbox\|batches\|rejected>/...` | Reads one. |
+| `DELETE /<tenant>/<inbox\|batches\|rejected>/...` | Deletes one, for a principal on the tenant's `delete` list. |
+| `GET /<tenant>/list?prefix=inbox/` | Lists a buffer's files in name order, up to 1,000 at a time, with a `cursor` for the next page. |
 | `POST /_clean` | Deletes the photos and files each tenant no longer uses, at most once a day. Kept files are never deleted. |
 
 An upload has to carry the editor's GitHub token
@@ -80,6 +84,26 @@ without `kept` doesn't unkeep it.
 | `calls-integrations`, `calls-visit-ee`, `calls-opportunity-site`, `calls-business-plan` (private) | the integrations call log's files BigQuery couldn't take, one tenant per consuming project: Avro, and json manifests behind heads, all kept; written by its ingest pod |
 | `facts` (private) | Sustenaut/business-plan's facts registry | its signed publet objects (cbor), all kept; uploaded by its editors from their own machines and read by business-plan's main |
 | `sources` (private, its pdfs public) | Sustenaut/business-plan's sources corpus | papers (pdf) whose licence allows it, which come from elsewhere and stay public at the addresses signed records name; signed publet objects (cbor, named by their SHA-256 like any file) and their indexes (json); all kept, never cleaned; read by business-plan's main (the review site's image build) |
+
+### Buffers
+
+A private tenant with `"inbox": true` also holds files waiting to be taken: the
+integrations service's call logs, written by each sender and loaded and deleted by its
+ingest pod. So what's in the buffer is what's still to do, and nothing needs to remember a
+place in it.
+
+| Folder | Holds |
+|---|---|
+| `inbox/<table>/<date>/` | Avro files waiting to load |
+| `batches/` | json: which files the current load has |
+| `rejected/<table>/<date>/` | Avro files that couldn't load, for a person |
+
+A file is named by its sender and is checked as Avro or JSON, up to 50 MB. Sending a name
+again replaces the file, which is how a sender retries, as the name holds a hash of its
+content. Anyone on `read` or `write` may read and list; `write` may also store. Only a
+principal on the tenant's `delete` list may delete, by OpenID Connect token. Unlike a
+`file`, a buffer's file isn't cached and has no `kept`: the clean-up leaves private tenants
+alone, so a file stays until it is deleted.
 
 ### Private tenants
 
