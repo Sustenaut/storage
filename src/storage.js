@@ -93,6 +93,7 @@ export const FILE_TYPES = {
   cbor: { type: "application/cbor", inline: false, check: (b) => b.length > 0 && b[0] >= 0xa0 && b[0] <= 0xbf },
   json: { type: "application/json", inline: true, check: isJson },
   gz: { type: "application/gzip", inline: false, check: (b) => b[0] === 0x1f && b[1] === 0x8b },
+  avro: { type: "application/avro", inline: false, check: (b) => b[0] === 0x4f && b[1] === 0x62 && b[2] === 0x6a && b[3] === 0x01 },
 };
 
 function isJson(b) {
