@@ -125,7 +125,6 @@
       "k8s:release-schryer/app"
     ],
     "write": [
-      "github:Sustenaut/release-controlplane@refs/heads/main",
       "github:schryer/release-controlplane@refs/heads/main"
     ],
     "files": {
