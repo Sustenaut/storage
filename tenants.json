@@ -89,6 +89,19 @@
       "kept": true
     }
   },
+  "pdc": {
+    "write": [
+      "github:Sustenaut/pub-site@refs/heads/main"
+    ],
+    "files": {
+      "types": [
+        "cbor",
+        "json"
+      ],
+      "max_bytes": 26214400,
+      "kept": true
+    }
+  },
   "release-sustenaut": {
     "private": true,
     "heads": true,
@@ -118,6 +131,78 @@
       "types": [
         "json"
       ],
+      "kept": true
+    }
+  },
+  "calls-integrations": {
+    "private": true,
+    "heads": true,
+    "read": [
+      "k8s:integrations/ingest"
+    ],
+    "write": [
+      "k8s:integrations/ingest"
+    ],
+    "files": {
+      "types": [
+        "avro",
+        "json"
+      ],
+      "max_bytes": 52428800,
+      "kept": true
+    }
+  },
+  "calls-visit-ee": {
+    "private": true,
+    "heads": true,
+    "read": [
+      "k8s:integrations/ingest"
+    ],
+    "write": [
+      "k8s:integrations/ingest"
+    ],
+    "files": {
+      "types": [
+        "avro",
+        "json"
+      ],
+      "max_bytes": 52428800,
+      "kept": true
+    }
+  },
+  "calls-opportunity-site": {
+    "private": true,
+    "heads": true,
+    "read": [
+      "k8s:integrations/ingest"
+    ],
+    "write": [
+      "k8s:integrations/ingest"
+    ],
+    "files": {
+      "types": [
+        "avro",
+        "json"
+      ],
+      "max_bytes": 52428800,
+      "kept": true
+    }
+  },
+  "calls-business-plan": {
+    "private": true,
+    "heads": true,
+    "read": [
+      "k8s:integrations/ingest"
+    ],
+    "write": [
+      "k8s:integrations/ingest"
+    ],
+    "files": {
+      "types": [
+        "avro",
+        "json"
+      ],
+      "max_bytes": 52428800,
       "kept": true
     }
   }

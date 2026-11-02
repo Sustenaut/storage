@@ -364,6 +364,15 @@ test("a private tenant's public_types are open to anyone, and nothing else in it
   assert.equal((await handle(new Request("https://storage.example/sources/files", { method: "POST", body: fake, headers: { Authorization: "Bearer good" } }), env, tenants)).status, 400);
 });
 
+test("the pdc tenant is public, and only pub-site's main writes it: kept signed objects and their reading data", () => {
+  const t = REAL_TENANTS.pdc;
+  assert.equal(t.private, undefined);
+  assert.equal(t.repository, undefined, "no editors: no GitHub token can write here");
+  assert.deepEqual(t.write, ["github:Sustenaut/pub-site@refs/heads/main"]);
+  assert.deepEqual(t.files, { types: ["cbor", "json"], max_bytes: 26214400, kept: true });
+  assert.equal(t.in_use, undefined, "nothing is cleaned");
+});
+
 test("the facts tenant is private: business-plan's editors upload, its main reads, kept, signed objects only", () => {
   const t = REAL_TENANTS.facts;
   assert.equal(t.private, true);
@@ -384,4 +393,15 @@ test("the sources tenant is private: business-plan's main reads it, its editors 
   assert.equal(t.repository, "Sustenaut/business-plan");
   assert.equal(t.in_use, undefined);
   assert.deepEqual(t.files, { types: ["pdf", "cbor", "json"], max_bytes: 26214400, kept: true });
+});
+
+test("an avro file must start as Avro does", async () => {
+  const tenants = { sources: { ...SOURCES, files: { types: ["avro"] } } };
+  const upload = (bytes) => {
+    const form = new FormData();
+    form.append("file", new Blob([bytes]), "calls.avro");
+    return handle(new Request("https://storage.example/sources/files", { method: "POST", body: form, headers: { Authorization: "Bearer good" } }), env, tenants);
+  };
+  assert.equal((await upload(new Uint8Array([0x4f, 0x62, 0x6a, 0x01, 0x00]))).status, 200);
+  assert.equal((await upload(new Uint8Array([0x4f, 0x62, 0x6a, 0x02]))).status, 400);
 });
