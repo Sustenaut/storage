@@ -385,3 +385,14 @@ test("the sources tenant is private: business-plan's main reads it, its editors 
   assert.equal(t.in_use, undefined);
   assert.deepEqual(t.files, { types: ["pdf", "cbor", "json"], max_bytes: 26214400, kept: true });
 });
+
+test("an avro file must start as Avro does", async () => {
+  const tenants = { sources: { ...SOURCES, files: { types: ["avro"] } } };
+  const upload = (bytes) => {
+    const form = new FormData();
+    form.append("file", new Blob([bytes]), "calls.avro");
+    return handle(new Request("https://storage.example/sources/files", { method: "POST", body: form, headers: { Authorization: "Bearer good" } }), env, tenants);
+  };
+  assert.equal((await upload(new Uint8Array([0x4f, 0x62, 0x6a, 0x01, 0x00]))).status, 200);
+  assert.equal((await upload(new Uint8Array([0x4f, 0x62, 0x6a, 0x02]))).status, 400);
+});

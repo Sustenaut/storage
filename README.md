@@ -51,7 +51,7 @@ A tenant that has `files` in `tenants.json` can store files besides photos:
 
 | `files` key | What |
 |---|---|
-| `types` | The extensions it takes, from pdf, pptx, docx, xlsx, csv, txt, png, jpg, jpeg, webp, gif, svg, cbor, json and gz. |
+| `types` | The extensions it takes, from pdf, pptx, docx, xlsx, csv, txt, png, jpg, jpeg, webp, gif, svg, cbor, json, gz and avro. |
 | `max_bytes` | The largest file, 25 MB when not given (Pages takes at most 100 MB a request). |
 | `kept` | `true` keeps every upload, as if each were sent with `kept=true`. |
 
@@ -59,7 +59,7 @@ A file is checked by its extension and, where the format has one, by its
 first bytes (`%PDF-`, PNG, JPEG and so on; docx, pptx and xlsx are zip
 archives; csv, txt and svg must be text, and an svg must contain an `<svg`
 tag; a cbor file must be a CBOR map, as every publet object is, and a json
-file must parse as JSON, and a gz file must start as gzip does). It is served with its type, as an attachment for Office files, csv
+file must parse as JSON, a gz file must start as gzip does, and an avro file as Avro does). It is served with its type, as an attachment for Office files, csv
 and cbor, and with a sandboxing Content-Security-Policy, so an SVG's scripts
 never run on this site. A public tenant's file address is a capability: anyone who has
 it can read the file.
@@ -76,6 +76,7 @@ without `kept` doesn't unkeep it.
 | `opportunity` (private) | opportunity.sustenaut.eu | photos, and pdf, pptx, docx, png, jpg, svg, csv and xlsx files |
 | `publications` (private) | pub.sustenaut.eu's publet objects | each publication release's `publication-0-objects.tar.gz`, uploaded by Sustenaut/business-plan's main and read by Sustenaut/pub-site and Sustenaut/estimate; all kept |
 | `release-sustenaut`, `release-schryer` (private) | the release control plane's board snapshots, one tenant per GitHub owner | json files, all kept, written by Sustenaut/release-controlplane's main, and each read by its own owner's deployment alone (`k8s:release/app`, `k8s:release-schryer/app`); a `board` head names the latest |
+| `integrations-overflow` (private) | the integrations service's call log files that BigQuery couldn't take: Avro, and json manifests behind heads, all kept; written by its ingest pod |
 | `facts` (private) | Sustenaut/business-plan's facts registry | its signed publet objects (cbor), all kept; uploaded by its editors from their own machines and read by business-plan's main |
 | `sources` (private, its pdfs public) | Sustenaut/business-plan's sources corpus | papers (pdf) whose licence allows it, which come from elsewhere and stay public at the addresses signed records name; signed publet objects (cbor, named by their SHA-256 like any file) and their indexes (json); all kept, never cleaned; read by business-plan's main (the review site's image build) |
 
