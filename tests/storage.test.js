@@ -364,6 +364,15 @@ test("a private tenant's public_types are open to anyone, and nothing else in it
   assert.equal((await handle(new Request("https://storage.example/sources/files", { method: "POST", body: fake, headers: { Authorization: "Bearer good" } }), env, tenants)).status, 400);
 });
 
+test("the pdc tenant is public, and only pub-site's main writes it: kept signed objects and their reading data", () => {
+  const t = REAL_TENANTS.pdc;
+  assert.equal(t.private, undefined);
+  assert.equal(t.repository, undefined, "no editors: no GitHub token can write here");
+  assert.deepEqual(t.write, ["github:Sustenaut/pub-site@refs/heads/main"]);
+  assert.deepEqual(t.files, { types: ["cbor", "json"], max_bytes: 26214400, kept: true });
+  assert.equal(t.in_use, undefined, "nothing is cleaned");
+});
+
 test("the facts tenant is private: business-plan's editors upload, its main reads, kept, signed objects only", () => {
   const t = REAL_TENANTS.facts;
   assert.equal(t.private, true);
