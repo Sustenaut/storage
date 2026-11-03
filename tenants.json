@@ -169,6 +169,7 @@
       "k8s:integrations/ingest"
     ],
     "write": [
+      "k8s:opportunity/app",
       "k8s:integrations/ingest"
     ],
     "delete": [
