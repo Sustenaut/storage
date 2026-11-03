@@ -136,7 +136,6 @@
   },
   "calls-integrations": {
     "private": true,
-    "heads": true,
     "inbox": true,
     "read": [
       "k8s:integrations/ingest"
@@ -145,21 +144,12 @@
       "k8s:integrations/app",
       "k8s:integrations/ingest"
     ],
-    "files": {
-      "types": [
-        "avro",
-        "json"
-      ],
-      "max_bytes": 52428800,
-      "kept": true
-    },
     "delete": [
       "k8s:integrations/ingest"
     ]
   },
   "calls-visit-ee": {
     "private": true,
-    "heads": true,
     "inbox": true,
     "read": [
       "k8s:integrations/ingest"
@@ -168,21 +158,12 @@
       "k8s:integrations/app",
       "k8s:integrations/ingest"
     ],
-    "files": {
-      "types": [
-        "avro",
-        "json"
-      ],
-      "max_bytes": 52428800,
-      "kept": true
-    },
     "delete": [
       "k8s:integrations/ingest"
     ]
   },
   "calls-opportunity-site": {
     "private": true,
-    "heads": true,
     "inbox": true,
     "read": [
       "k8s:integrations/ingest"
@@ -190,21 +171,12 @@
     "write": [
       "k8s:integrations/ingest"
     ],
-    "files": {
-      "types": [
-        "avro",
-        "json"
-      ],
-      "max_bytes": 52428800,
-      "kept": true
-    },
     "delete": [
       "k8s:integrations/ingest"
     ]
   },
   "calls-business-plan": {
     "private": true,
-    "heads": true,
     "inbox": true,
     "read": [
       "k8s:integrations/ingest"
@@ -212,14 +184,6 @@
     "write": [
       "k8s:integrations/ingest"
     ],
-    "files": {
-      "types": [
-        "avro",
-        "json"
-      ],
-      "max_bytes": 52428800,
-      "kept": true
-    },
     "delete": [
       "k8s:integrations/ingest"
     ]
