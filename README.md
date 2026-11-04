@@ -258,17 +258,18 @@ that keeps files too, like `opportunity` (opportunity.sustenaut.eu).
 ```sh
 npm ci
 npm test        # node --test, with an in-memory bucket and GitHub answered locally
+npm run dev     # wrangler pages dev, with a local bucket
 ```
 
-`npx wrangler@4.156.0 pages dev public --r2 STORAGE` runs it locally with a
-local bucket. The version is pinned (the one estimate pins), so every machine
-runs the same wrangler; move it in both repositories together.
+wrangler is a devDependency pinned at the version estimate pins, and
+`package-lock.json` locks it, so every machine and the deploy (`npm run
+deploy`) run the same wrangler; move it in both repositories together.
 
 ## Setting it up (once)
 
 1. **The bucket.** Create an R2 bucket named `sustenaut-storage` in the
    Cloudflare account, either in the dashboard or with
-   `npx wrangler@4.156.0 r2 bucket create sustenaut-storage`.
+   `npx --no-install wrangler r2 bucket create sustenaut-storage` after `npm ci`.
 2. **The Pages project and the name.** These come from the `storage` site in
    Sustenaut/business-plan's `pubkit.json`, applied by its infra like
    maps.sustenaut.eu.

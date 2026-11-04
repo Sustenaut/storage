@@ -6,6 +6,11 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "dev": "wrangler pages dev public --r2 STORAGE",
+    "deploy": "wrangler pages deploy public --project-name sustenaut-storage --branch main"
+  },
+  "devDependencies": {
+    "wrangler": "4.156.0"
   }
 }
