@@ -260,14 +260,15 @@ npm ci
 npm test        # node --test, with an in-memory bucket and GitHub answered locally
 ```
 
-`npx wrangler pages dev public --r2 STORAGE` runs it locally with a local
-bucket.
+`npx wrangler@4.156.0 pages dev public --r2 STORAGE` runs it locally with a
+local bucket. The version is pinned (the one estimate pins), so every machine
+runs the same wrangler; move it in both repositories together.
 
 ## Setting it up (once)
 
 1. **The bucket.** Create an R2 bucket named `sustenaut-storage` in the
    Cloudflare account, either in the dashboard or with
-   `npx wrangler r2 bucket create sustenaut-storage`.
+   `npx wrangler@4.156.0 r2 bucket create sustenaut-storage`.
 2. **The Pages project and the name.** These come from the `storage` site in
    Sustenaut/business-plan's `pubkit.json`, applied by its infra like
    maps.sustenaut.eu.
