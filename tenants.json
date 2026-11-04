@@ -184,7 +184,6 @@
     ],
     "write": [
       "gcp:sustenaut-app@sustenaut.iam.gserviceaccount.com",
-      "gcp:sustenaut-reports@sustenaut.iam.gserviceaccount.com",
       "k8s:integrations/ingest"
     ],
     "delete": [
