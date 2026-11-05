@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm test
       # wrangler pages deploy, run from the repository's root, takes
       # functions/ and wrangler.toml from there.
