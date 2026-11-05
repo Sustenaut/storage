@@ -183,6 +183,7 @@
       "k8s:integrations/ingest"
     ],
     "write": [
+      "gcp:sustenaut-app@sustenaut.iam.gserviceaccount.com",
       "k8s:integrations/ingest"
     ],
     "delete": [
