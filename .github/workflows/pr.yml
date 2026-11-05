@@ -12,13 +12,20 @@ permissions:
 jobs:
   checks:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@7914b2abb933747e303f5f981d8335d3704dcdb3 # v0.21.0
+    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@d634bd9ba97c6933561e9e7d1ceff5b975e8f22e # v0.28.0
     with: {"shellcheck": "with-secrets"}
 
   tests:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@7914b2abb933747e303f5f981d8335d3704dcdb3 # v0.21.0
+    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@d634bd9ba97c6933561e9e7d1ceff5b975e8f22e # v0.28.0
     with: {"setup": "npm ci", "test": "npm test"}
+
+  sonar:
+    name: ci
+    needs: [tests]
+    uses: Sustenaut/pubkit/.github/workflows/job-sonar.yml@d634bd9ba97c6933561e9e7d1ceff5b975e8f22e # v0.28.0
+    with: {"reports": "sonar.python.coverage.reportPaths=*.xml sonar.javascript.lcov.reportPaths=lcov.info"}
+    secrets: { SONAR_TOKEN: '${{ secrets.SONAR_TOKEN }}' }
 
   # The site as deploy-static checks it before a deploy, so a site that
   # would fail to deploy fails the pull request. It deploys nothing.
@@ -27,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: Sustenaut/pubkit/actions/deploy-static@7914b2abb933747e303f5f981d8335d3704dcdb3 # v0.21.0
+      - uses: Sustenaut/pubkit/actions/deploy-static@d634bd9ba97c6933561e9e7d1ceff5b975e8f22e # v0.28.0
         with: {"dir": "public", "check-only": "true"}
 
   # The one check a ruleset requires: it passes only when every job
@@ -35,7 +42,7 @@ jobs:
   passed:
     name: ci / passed
     if: always()
-    needs: [checks, tests, site]
+    needs: [checks, tests, sonar, site]
     runs-on: ubuntu-latest
     steps:
       - run: |
