@@ -3,7 +3,7 @@
     {
       "plugin": "bitwarden.secrets",
       "paths": [
-        "with-secrets"
+        "with-secrets.json"
       ],
       "mode": "required"
     },
@@ -41,6 +41,14 @@
         "src/jwt.js"
       ],
       "mode": "advisory"
+    },
+    {
+      "plugin": "sonarcloud.scan",
+      "paths": [
+        ".github/workflows/main.yml",
+        ".github/workflows/pr.yml"
+      ],
+      "mode": "required"
     }
   ],
   "own_hosts": [
