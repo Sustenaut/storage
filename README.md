@@ -158,6 +158,23 @@ curl -fsS -H "Authorization: Bearer $token" -F file=@publication-0-objects.tar.g
   https://storage.sustenaut.eu/publications/files
 ```
 
+### Google service accounts
+
+A Cloud Run service, or anything else running as a Google service account, asks its
+metadata server for an identity token for the audience `storage.sustenaut.eu`, with
+`format=full` so the token carries its address:
+
+```
+http://metadata.google.internal/computeMetadata/v1/instance/service-account/identity?audience=storage.sustenaut.eu&format=full
+```
+
+with the header `Metadata-Flavor: Google`. No secret is stored anywhere. Its principal is
+`gcp:<address>`, such as `gcp:plan@sustenaut.iam.gserviceaccount.com`. The token must be
+signed by one of Google's keys and be for this audience and in date. It must also say
+its address is verified, and that address must be a service account's. Any Google
+account can ask for a token for this audience, so only the exact addresses in a
+tenant's lists count. A `gcp:` entry matches only itself, never by its part after `@`.
+
 ### Pods on the k3s server
 
 A pod uploads with a service-account token Kubernetes projects into it for
