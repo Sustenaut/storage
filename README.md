@@ -165,7 +165,7 @@ metadata server for an identity token for the audience `storage.sustenaut.eu`, w
 `format=full` so the token carries its address:
 
 ```
-http://metadata.google.internal/computeMetadata/v1/instance/service-account/identity?audience=storage.sustenaut.eu&format=full
+http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=storage.sustenaut.eu&format=full
 ```
 
 with the header `Metadata-Flavor: Google`. No secret is stored anywhere. Its principal is
