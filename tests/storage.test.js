@@ -540,3 +540,10 @@ test("the calls-storage tenant is the call log's buffer: only ingest reads, writ
     private: true, inbox: true, read: ["k8s:integrations/ingest"], write: ["k8s:integrations/ingest"], delete: ["k8s:integrations/ingest"],
   });
 });
+
+test("the calls-release-controlplane tenant is a call-log buffer both release deployments write", () => {
+  assert.deepEqual(REAL_TENANTS["calls-release-controlplane"], {
+    private: true, inbox: true, read: ["k8s:integrations/ingest"],
+    write: ["k8s:release/app", "k8s:release-schryer/app", "k8s:integrations/ingest"], delete: ["k8s:integrations/ingest"],
+  });
+});
