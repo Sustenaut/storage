@@ -9,6 +9,6 @@
     "test": "mkdir -p coverage && node --test --experimental-test-coverage --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info tests/*.test.js"
   },
   "dependencies": {
-    "@sustenaut/integrations": "github:Sustenaut/integrations#v0.14.0"
+    "@sustenaut/integrations": "github:Sustenaut/integrations#v0.14.1"
   }
 }
