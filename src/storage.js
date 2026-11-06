@@ -59,6 +59,14 @@
 // file it replaces (If-Match) and loses to any other move made since. Moving
 // first writes the head's current place to its log, so a move that fails
 // leaves a true entry behind, and none is ever missing.
+//
+// Every call out (GitHub, a site's in_use list, an issuer's keys) gives up
+// after TIMEOUT_MS. GitHub not answering in time is a 503, not a refusal. A
+// yes from GitHub for a token and repository is kept for ALLOWED_FOR_MS (in
+// memory, by the SHA-256 of the token and repository, never the token
+// itself), so a person's upload of many photos asks GitHub once; a revoked
+// push permission therefore lasts up to that much longer. A no, or an error,
+// is never kept.
 
 // A buffer is a private tenant with "inbox": true: files waiting for a job to take
 // them and delete them, in folders it can list. Unlike everything else here a file
@@ -86,6 +94,13 @@ const BUFFER = /^\/([a-z0-9-]+)\/((inbox|rejected)\/(?:[A-Za-z0-9][A-Za-z0-9._-]
 const BUFFER_PREFIX = /^(inbox|batches|rejected)\/(?:[A-Za-z0-9][A-Za-z0-9._-]*\/)*(?:[A-Za-z0-9][A-Za-z0-9._-]*)?$/;
 const BUFFER_MAX_BYTES = 50 * 1024 * 1024;
 const LIST_LIMIT = 1000;
+const TIMEOUT_MS = 10_000;
+const ALLOWED_FOR_MS = 60e3;
+const ALLOWED_MAX = 1000;
+
+// The yeses GitHub gave, by sha256(token, repository): { login, app, until }.
+// now is the clock, which the tests set.
+export const allowedCache = { now: () => Date.now(), entries: new Map() };
 
 // The file types a tenant may allow: Content-Type, whether a browser shows
 // it inline, and a check of its first bytes.
@@ -429,14 +444,34 @@ function bearer(request) {
 // (contents: write).
 async function editor(request, repository) {
   const token = bearer(request);
+  const key = await hash(new TextEncoder().encode(`${token}\n${repository}`), 32);
+  const now = allowedCache.now();
+  const hit = allowedCache.entries.get(key);
+  if (hit && hit.until > now) return { login: hit.login, app: hit.app };
+  allowedCache.entries.delete(key);
   const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "User-Agent": "sustenaut-storage" };
-  if (token.startsWith("ghs_")) return { login: "github-app", app: true, ...(await installation(headers, repository)) };
-  return { login: await person(headers, repository), app: false };
+  const who = token.startsWith("ghs_")
+    ? { login: "github-app", app: true, ...(await installation(headers, repository)) }
+    : { login: await person(headers, repository), app: false };
+  // The oldest entry goes first when the cache is full.
+  if (allowedCache.entries.size >= ALLOWED_MAX) allowedCache.entries.delete(allowedCache.entries.keys().next().value);
+  allowedCache.entries.set(key, { login: who.login, app: who.app, until: now + ALLOWED_FOR_MS });
+  return who;
+}
+
+// GitHub's answer, or a 503 if it gives none in time.
+async function gitHub(url, headers) {
+  try {
+    return await fetch(url, { headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  } catch (err) {
+    if (err?.name === "TimeoutError") throw status(503, `GitHub didn't answer within ${TIMEOUT_MS / 1000} s; try again`);
+    throw status(503, `GitHub can't be reached: ${err?.message || err}`);
+  }
 }
 
 async function installation(headers, repository) {
   for (let page = 1; page <= 10; page++) {
-    const r = await fetch(`https://api.github.com/installation/repositories?per_page=100&page=${page}`, { headers });
+    const r = await gitHub(`https://api.github.com/installation/repositories?per_page=100&page=${page}`, headers);
     if (!r.ok) throw status(403, `GitHub said ${r.status} for the app's repositories`);
     const { repositories = [] } = await r.json();
     const repo = repositories.find((x) => x.full_name?.toLowerCase() === repository.toLowerCase());
@@ -450,10 +485,10 @@ async function installation(headers, repository) {
 }
 
 async function person(headers, repository) {
-  const repo = await fetch(`https://api.github.com/repos/${repository}`, { headers });
+  const repo = await gitHub(`https://api.github.com/repos/${repository}`, headers);
   if (!repo.ok) throw status(403, `GitHub said ${repo.status} for ${repository}`);
   if (!(await repo.json()).permissions?.push) throw status(403, `that token can't write to ${repository}`);
-  const user = await fetch("https://api.github.com/user", { headers });
+  const user = await gitHub("https://api.github.com/user", headers);
   return user.ok ? (await user.json()).login || "?" : "?";
 }
 
@@ -477,7 +512,7 @@ export async function clean(env, tenants = TENANTS, now = Date.now()) {
       report[tenantId] = { skipped: "no in_use list: nothing is cleaned" };
       continue;
     }
-    const response = await fetch(tenant.in_use).catch((err) => ({ ok: false, status: err.message }));
+    const response = await fetch(tenant.in_use, { signal: AbortSignal.timeout(TIMEOUT_MS) }).catch((err) => ({ ok: false, status: err.message }));
     if (!response.ok) {
       report[tenantId] = { skipped: `${tenant.in_use}: ${response.status}` };
       continue;

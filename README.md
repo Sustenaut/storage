@@ -35,6 +35,12 @@ An upload has to carry the editor's GitHub token
 the tenant's `repository`. The person who may change the site's content is
 the one who may add its photos.
 
+GitHub's yes is kept for a minute (in memory, by a hash of the token and
+repository), so an upload of many sizes or files asks GitHub once; a
+revoked push permission can therefore still upload for up to a minute. A
+no is never kept. GitHub not answering within 10 seconds is a 503, to try
+again, not a 403.
+
 A service can upload with its GitHub App's installation token (`ghs_…`)
 instead. Such a token can't say who its user is, so the check is different:
 the app's installation must list the tenant's repository with push
@@ -122,8 +128,8 @@ A principal is `github:<owner>/<repo>` (any ref) or
 client of auth.sustenaut.eu, is ready in `src/jwt.js`, waiting for its
 issuer to be turned on. Personal tokens and GitHub App tokens are not taken by a private tenant,
 and it needs no `repository`, unless it says `"editors": true`: then a GitHub
-token that may push to its `repository` may read and write it too, each time
-checked with GitHub. `sources`, `facts`, `publications` and `opportunity` do, because people upload
+token that may push to its `repository` may read and write it too, checked
+with GitHub (and kept a minute, as above). `sources`, `facts`, `publications` and `opportunity` do, because people upload
 from their own machines (`make sources-upload` and the like), where no workflow
 token exists. Nothing is public until an explicit publishing step puts it
 somewhere public, with one exception: `"public_types"` lists file types of a

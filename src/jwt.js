@@ -34,6 +34,7 @@ export const AUDIENCE = "storage.sustenaut.eu";
 const LEEWAY = 60;
 const KEYS_FOR_MS = 10 * 60e3; // a key set is fetched again after this
 const UNKNOWN_KID_EVERY_MS = 60e3; // and at most this often for a key it doesn't have
+const TIMEOUT_MS = 10_000; // an issuer that hasn't answered by then counts as unreadable
 
 export const ISSUERS = {
   "https://token.actions.githubusercontent.com": {
@@ -137,7 +138,7 @@ async function pinnedKey(jwks, kid) {
 }
 
 async function fetchKeys(url, now, old) {
-  const response = await fetch(url).catch(() => null);
+  const response = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) }).catch(() => null);
   if (!response?.ok) {
     if (old) return { ...old, tried: now };
     throw unauthorized("the issuer's keys can't be read now");
