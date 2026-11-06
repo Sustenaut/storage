@@ -2,35 +2,41 @@
 // (functions/[[path]].js), so none of them lives in a site's git
 // repository or in its Pages deployment.
 //
-// Each site is a tenant (tenants.json), with its own part of the bucket:
+// Each site is a tenant (tenants.json), with its own part of the bucket. Every route
+// is here, as openapi.json names it, and tests/openapi.test.js holds the two to each
+// other and to the code:
 //
-//   GET  /<tenant>/p/<id>/<width>.<jpg|webp>   a photo, cached for good: ids
-//                                               are content hashes, so a
-//                                               photo never changes
-//   POST /<tenant>/upload                       a photo from the tenant's
-//                                               editor
-//   GET  /<tenant>/f/<id>/<name>                a file, cached for good: the
-//                                               id is its content's SHA-256
-//   POST /<tenant>/files                        a file, for tenants whose
-//                                               tenants.json entry has "files"
-//   GET  /<tenant>/head/<name>                  the file a named head points
-//                                               at, for tenants with "heads"
-//   PUT  /<tenant>/head/<name>                  move the head to a stored file
-//   GET  /<tenant>/head/<name>/log              where the head has pointed
-//   PUT  /<tenant>/<inbox|batches|rejected>/... a file in a buffer, for tenants
-//                                               with "inbox"
-//   GET  /<tenant>/<inbox|batches|rejected>/... that file
-//   DELETE the same                             that file, for the "delete" list
-//   GET  /<tenant>/list?prefix=...              the buffer's files, oldest name first
-//   POST /_clean                                the nightly clean-up
+//   GET,HEAD /{tenant}/p/{id}/{size}         a photo ({size} is <width>.<jpg|webp>),
+//                                            cached for good: ids are content
+//                                            hashes, so a photo never changes
+//   POST /{tenant}/upload                    a photo from the tenant's editor
+//   GET,HEAD /{tenant}/f/{id}/{name}         a file, cached for good: the id is its
+//                                            content's SHA-256
+//   POST /{tenant}/files                     a file, for tenants whose tenants.json
+//                                            entry has "files"
+//   GET,HEAD /{tenant}/head/{name}           the file a named head points at, for
+//                                            tenants with "heads"
+//   PUT /{tenant}/head/{name}                move the head to a stored file
+//   GET /{tenant}/head/{name}/log            where the head has pointed
+//   PUT,GET,HEAD,DELETE /{tenant}/inbox/{path}
+//   PUT,GET,HEAD,DELETE /{tenant}/rejected/{path}
+//   PUT,GET,HEAD,DELETE /{tenant}/batches/{name}
+//                                            a file in a buffer, for tenants with
+//                                            "inbox"; deleting is for the "delete"
+//                                            list ({path} may hold folders)
+//   GET /{tenant}/list                       a private tenant's files (?prefix=f/),
+//                                            with "files", or its buffer's
+//                                            (?prefix=inbox/ and so on), name order,
+//                                            a page at a time
+//   POST /_clean                             the nightly clean-up
 //
 // An upload is the sizes the editor made in the browser (multipart fields
 // named "<width>.<jpg|webp>"), sent with the editor's GitHub token: they
 // are stored only if that token may push to the tenant's repository. The
 // answer is the photo's description, which the site keeps in its content.
 //
-// A file is one multipart field "file" (with optional "name", "label" and
-// "kept"), of a type the tenant allows (checked by extension and, where the
+// A file is one multipart field "file" (with optional "name", "label",
+// "subject" and "kept"), of a type the tenant allows (checked by extension and, where the
 // format has one, its magic bytes). A service may upload with its GitHub
 // App's installation token instead of a person's token; the file is then
 // recorded as uploaded by the app.
@@ -44,7 +50,11 @@
 // whose list has no "files" key never has files deleted, and a tenant
 // without an in_use list has nothing deleted.
 //
-// A private tenant ("private": true) is different: nothing in it is public.
+// A private tenant ("private": true) is different: nothing in it is public,
+// and its readers may list its files: each one's id, name, size, when it was
+// uploaded and what its upload said (label, kept, by, for, subject), so a site
+// can find the files about one subject, such as a card. A public tenant is never
+// listed.
 // Reading needs an OpenID Connect token (src/jwt.js) whose principal is in
 // its "read" or "write" list, writing one in its "write" list; GitHub tokens
 // aren't taken, unless it says "editors": true, when a GitHub token that may
@@ -92,6 +102,7 @@ const HEAD = /^\/([a-z0-9-]+)\/head\/([a-z0-9][a-z0-9._-]{0,63})(\/log)?$/;
 const HASH = /^[0-9a-f]{64}$/;
 const BUFFER = /^\/([a-z0-9-]+)\/((inbox|rejected)\/(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/){0,5}[A-Za-z0-9][A-Za-z0-9._-]{0,119}\.avro|batches\/[A-Za-z0-9][A-Za-z0-9._-]{0,119}\.json)$/;
 const BUFFER_PREFIX = /^(inbox|batches|rejected)\/(?:[A-Za-z0-9][A-Za-z0-9._-]*\/)*(?:[A-Za-z0-9][A-Za-z0-9._-]*)?$/;
+const FILE_PREFIX = /^f\/(?:[0-9a-f]{0,63}|[0-9a-f]{64}(?:\/[A-Za-z0-9._-]{0,120})?)$/;
 const BUFFER_MAX_BYTES = 50 * 1024 * 1024;
 const LIST_LIMIT = 1000;
 const TIMEOUT_MS = 10_000;
@@ -153,6 +164,7 @@ export async function handle(request, env, tenants = TENANTS) {
       return json(await clean(env, tenants, now), 200);
     }
     if (!tenant) throw status(404, "not found");
+    if (url.pathname === `/${tenantId}/list` && request.method === "GET") return await list(request, env, url, tenantId, tenant);
     if (tenant.private && tenant.inbox) {
       const answered = await buffer(request, env, url, tenantId, tenant);
       if (answered) return answered;
@@ -161,29 +173,46 @@ export async function handle(request, env, tenants = TENANTS) {
     if (request.method === "PUT") return await moveHead(request, env, url, tenant);
     if (request.method === "POST" && url.pathname === `/${tenantId}/upload`) return json(await upload(request, env, tenantId, tenant), 200, cors);
     if (request.method === "POST" && url.pathname === `/${tenantId}/files`) return json(await uploadFile(request, env, tenantId, tenant), 200, cors);
-    throw status(404, "not found");
+    throw unrouted();
   } catch (err) {
     return json({ error: err.message }, err.status || 500, cors);
   }
 }
 
+// A page of a private tenant's files (prefix f/, with "files") or of its buffer's
+// folders (with "inbox"), for its readers, in name order. Public tenants aren't listed.
+async function list(request, env, url, tenantId, tenant) {
+  const prefix = url.searchParams.get("prefix") || "";
+  const files = tenant.private && tenant.files && prefix.startsWith("f/");
+  if (!files && !(tenant.private && tenant.inbox)) throw status(404, "this tenant isn't listed");
+  await reader(request, tenant);
+  if (files && !FILE_PREFIX.test(prefix)) throw status(400, "the prefix is f/, then part or all of an id, then /, then the start of a name");
+  if (!files && !BUFFER_PREFIX.test(prefix)) throw status(400, "the prefix is inbox/, batches/ or rejected/ and folders under it");
+  const asked = Number(url.searchParams.get("limit") || LIST_LIMIT);
+  if (!Number.isInteger(asked) || asked < 1 || asked > LIST_LIMIT) throw status(400, `the limit is 1 to ${LIST_LIMIT}`);
+  const page = await env.STORAGE.list({
+    prefix: `${tenantId}/${prefix}`,
+    limit: asked,
+    cursor: url.searchParams.get("cursor") || undefined,
+    ...(files && { include: ["customMetadata"] }),
+  });
+  const entries = page.objects.map((o) => (files ? fileEntry(tenantId, o) : { name: o.key.slice(tenantId.length + 1), size: o.size, uploaded: o.uploaded }));
+  return json({ files: entries, cursor: page.truncated ? page.cursor : null }, 200, privateHeaders(request, tenant));
+}
+
+// A stored file as a listing gives it: where it is, and what its upload said of it.
+function fileEntry(tenantId, o) {
+  const [, , id, name] = o.key.split("/");
+  const meta = o.customMetadata || {};
+  const metadata = {};
+  for (const key of ["label", "kept", "by", "for", "subject"]) if (meta[key] !== undefined) metadata[key] = meta[key];
+  const uploaded = meta.uploaded || new Date(o.uploaded).toISOString();
+  return { name, id, url: `/${o.key}`, size: o.size, uploaded, metadata };
+}
+
 // A request for a tenant's buffer; nothing if it's for something else.
 async function buffer(request, env, url, tenantId, tenant) {
   const headers = privateHeaders(request, tenant);
-  if (url.pathname === `/${tenantId}/list` && request.method === "GET") {
-    await reader(request, tenant);
-    const prefix = url.searchParams.get("prefix") || "";
-    if (!BUFFER_PREFIX.test(prefix)) throw status(400, "the prefix is inbox/, batches/ or rejected/ and folders under it");
-    const asked = Number(url.searchParams.get("limit") || LIST_LIMIT);
-    if (!Number.isInteger(asked) || asked < 1 || asked > LIST_LIMIT) throw status(400, `the limit is 1 to ${LIST_LIMIT}`);
-    const page = await env.STORAGE.list({
-      prefix: `${tenantId}/${prefix}`,
-      limit: asked,
-      cursor: url.searchParams.get("cursor") || undefined,
-    });
-    const files = page.objects.map((o) => ({ name: o.key.slice(tenantId.length + 1), size: o.size, uploaded: o.uploaded }));
-    return json({ files, cursor: page.truncated ? page.cursor : null }, 200, headers);
-  }
   const route = url.pathname.match(BUFFER);
   if (!route || route[1] !== tenantId) return null;
   const key = url.pathname.slice(1);
@@ -211,7 +240,7 @@ async function buffer(request, env, url, tenantId, tenant) {
     await env.STORAGE.delete(key);
     return new Response(null, { status: 204, headers });
   }
-  throw status(405, "not allowed");
+  throw status(405, "no such route: not allowed");
 }
 
 // A photo, from Cloudflare's cache where it can be (the Cache API works on
@@ -225,7 +254,7 @@ async function serve(url, env, request, tenant) {
   const photo = url.pathname.match(PHOTO);
   const file = !photo && url.pathname.match(FILE);
   const kind = file && FILE_TYPES[extension(file[3])];
-  if (!photo && !(kind && tenant.files)) throw status(404, "not found");
+  if (!photo && !(kind && tenant.files)) throw unrouted();
   const cache = !closed && request.method === "GET" && globalThis.caches?.default;
   const hit = cache && (await cache.match(request));
   if (hit) return hit;
@@ -299,7 +328,7 @@ async function headLog(env, [, tenantId, name], tenant) {
 // If-None-Match: * for its first move.
 async function moveHead(request, env, url, tenant) {
   const route = url.pathname.match(HEAD);
-  if (!route || route[3]) throw status(404, "not found");
+  if (!route || route[3]) throw unrouted();
   const [, tenantId, name] = route;
   const { login } = await writer(request, tenant);
   const head = await readHead(env, tenantId, name, tenant);
@@ -373,7 +402,7 @@ export async function uploadFile(request, env, tenantId, tenant) {
   const form = await request.formData();
   const file = form.get("file");
   for (const field of form.keys()) {
-    if (!["file", "name", "label", "kept", "for"].includes(field)) throw status(400, `unexpected field ${field}`);
+    if (!["file", "name", "label", "kept", "for", "subject"].includes(field)) throw status(400, `unexpected field ${field}`);
   }
   if (!file || typeof file === "string") throw status(400, "no file");
   const name = String(form.get("name") || file.name || "").trim();
@@ -387,6 +416,8 @@ export async function uploadFile(request, env, tenantId, tenant) {
   if (bytes.length > max) throw status(413, `${name} is over ${max} bytes`);
   if (!kind.check(bytes)) throw status(400, `${name} is not a .${ext} file`);
   const label = String(form.get("label") || "").trim().slice(0, LABEL_CHARS);
+  // What the file is about, such as a card, so a listing can find a subject's files.
+  const subject = String(form.get("subject") || "").trim().slice(0, LABEL_CHARS);
   // A tenant whose files are all kept (sources: papers and signed objects) keeps every upload.
   const kept = tenant.files.kept === true || form.get("kept") === "true";
 
@@ -397,9 +428,10 @@ export async function uploadFile(request, env, tenantId, tenant) {
   const keep = kept || before?.customMetadata?.kept === "true";
   const customMetadata = { uploaded: new Date().toISOString(), by: who.login, kept: String(keep) };
   if (label) customMetadata.label = label;
+  if (subject) customMetadata.subject = subject;
   if (who.app && form.get("for")) customMetadata.for = String(form.get("for")).slice(0, LABEL_CHARS);
   await env.STORAGE.put(key, bytes, { httpMetadata: { contentType: kind.type }, customMetadata });
-  return { id, name, url: `/${key}`, type: kind.type, size: bytes.length, label, kept: keep };
+  return { id, name, url: `/${key}`, type: kind.type, size: bytes.length, label, subject, kept: keep };
 }
 
 // Who may write to the tenant: an OpenID Connect token's principal in its
@@ -586,6 +618,12 @@ export function jpegSize(b) {
 async function hash(bytes, length = 8) {
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
   return [...digest.slice(0, length)].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+// A request no route here answers, as opposed to one for something not stored:
+// tests/openapi.test.js holds every route in openapi.json to not getting this.
+function unrouted() {
+  return status(404, "no such route");
 }
 
 function status(code, message) {

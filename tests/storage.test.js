@@ -169,7 +169,7 @@ test("a file is stored under its content's SHA-256 and served with its type, for
   assert.match(file.id, /^[0-9a-f]{64}$/);
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", pdf()));
   assert.equal(file.id, [...digest].map((x) => x.toString(16).padStart(2, "0")).join(""));
-  assert.deepEqual({ ...file, id: "" }, { id: "", name: "market-report.pdf", url: `/opportunity/f/${file.id}/market-report.pdf`, type: "application/pdf", size: pdf().length, label: "OPP-02 market report v3", kept: false });
+  assert.deepEqual({ ...file, id: "" }, { id: "", name: "market-report.pdf", url: `/opportunity/f/${file.id}/market-report.pdf`, type: "application/pdf", size: pdf().length, label: "OPP-02 market report v3", subject: "", kept: false });
   const stored = env.STORAGE.objects.get(`opportunity/f/${file.id}/market-report.pdf`);
   assert.equal(stored.customMetadata.by, "schryer");
   assert.equal(stored.customMetadata.label, "OPP-02 market report v3");
