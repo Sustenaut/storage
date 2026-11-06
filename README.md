@@ -13,14 +13,17 @@ every DNS provider of the zone.
 ## What it does
 
 Each site that uses it is a **tenant** in `tenants.json` and gets its own
-part of the bucket:
+part of the bucket. [`openapi.json`](openapi.json) describes every route, its tokens,
+its answers and its errors (always `{"error": "..."}`), and `tests/openapi.test.js` fails
+when it and the code disagree. The JavaScript and Python clients are generated from it
+in [integrations](https://github.com/Sustenaut/integrations), on its `Caller`.
 
 | Request | What it does |
 |---|---|
 | `GET /<tenant>/p/<id>/<width>.jpg` (or `.webp`) | A photo, cached for good: the id is a hash of the photo's content, so a photo never changes. |
 | `POST /<tenant>/upload` | Stores a photo from the tenant's editor (multipart fields named `<width>.jpg` and `<width>.webp`, made in the browser) and answers its description: `{id, width, height, widths, formats}`. |
 | `GET /<tenant>/f/<id>/<name>` | A file, cached for good: the id is the SHA-256 of its content. |
-| `POST /<tenant>/files` | Stores one file (multipart field `file`, optional `name`, `label` such as "OPP-02 market report v3", `kept=true`) for a tenant with `files`, and answers `{id, name, url, type, size, label, kept}`. |
+| `POST /<tenant>/files` | Stores one file (multipart field `file`, optional `name`, `label` such as "OPP-02 market report v3", `subject` such as a card's id, `kept=true`) for a tenant with `files`, and answers `{id, name, url, type, size, label, subject, kept}`. |
 | `GET /<tenant>/head/<name>` | The file a named head points at, with its hash as `ETag`, for a private tenant with `heads` (below). |
 | `PUT /<tenant>/head/<name>` | Moves the head to a stored file. |
 | `GET /<tenant>/head/<name>/log` | Where the head has pointed, newest first. |
@@ -28,6 +31,7 @@ part of the bucket:
 | `GET /<tenant>/<inbox\|batches\|rejected>/...` | Reads one. |
 | `DELETE /<tenant>/<inbox\|batches\|rejected>/...` | Deletes one, for a principal on the tenant's `delete` list. |
 | `GET /<tenant>/list?prefix=inbox/` | Lists a buffer's files in name order, up to 1,000 at a time, with a `cursor` for the next page. |
+| `GET /<tenant>/list?prefix=f/` | Lists a private tenant's files, for its readers, the same way: each one's `name`, `id`, `url`, `size`, `uploaded` and `metadata` (`label`, `kept`, `by`, `for`, `subject`, as its upload gave them). A public tenant is never listed. |
 | `POST /_clean` | Deletes the photos and files each tenant no longer uses, at most once a day. Kept files are never deleted. |
 
 An upload has to carry the editor's GitHub token
@@ -73,6 +77,12 @@ file must parse as JSON, a gz file must start as gzip does, and an avro file as 
 and cbor, and with a sandboxing Content-Security-Policy, so an SVG's scripts
 never run on this site. A public tenant's file address is a capability: anyone who has
 it can read the file.
+
+A private tenant's readers can list its files (`GET /<tenant>/list?prefix=f/`, with
+`limit` and `cursor`; `f/<id>/` narrows it to one id). An upload's `subject` (up to 200
+characters, like `label`) comes back in the listing's `metadata`, so a site can find the
+files about one thing, such as a card, without keeping a table of its own. A public
+tenant is never listed: its addresses stay the only way to its files.
 
 **Kept files** are uploaded with `kept=true`: the client documents that
 went out. The clean-up never deletes them. Uploading the same file again
