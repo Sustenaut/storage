@@ -71,7 +71,13 @@
 // leaves a true entry behind, and none is ever missing.
 //
 // Every call out (GitHub, a site's in_use list, an issuer's keys) gives up
-// after TIMEOUT_MS. GitHub not answering in time is a 503, not a refusal. A
+// after TIMEOUT_MS. GitHub not answering in time, or failing, is a 503, not a
+// refusal. The calls to GitHub go through integrations' Caller as
+// github.repo-ops check-push, a call a person waits on (class H: 10 s, one try),
+// and each leaves a record in this service's own call-log buffer, the private
+// tenant calls-storage, written straight into the bucket (this service can't
+// call itself), a file every two minutes, from the request that finds one due
+// and finished after its answer (waitUntil). A
 // yes from GitHub for a token and repository is kept for ALLOWED_FOR_MS (in
 // memory, by the SHA-256 of the token and repository, never the token
 // itself), so a person's upload of many photos asks GitHub once; a revoked
@@ -85,6 +91,7 @@
 // replaces the file, which is how a sender retries, as its name holds a hash of it.
 // Deleting takes a place on the tenant's "delete" list, not just its "write" list.
 
+import { Caller, StorageSink, Unavailable } from "@sustenaut/integrations/caller.js";
 import { isJwt, verify, allowed } from "./jwt.js";
 import TENANTS from "../tenants.json" with { type: "json" };
 
@@ -108,6 +115,16 @@ const LIST_LIMIT = 1000;
 const TIMEOUT_MS = 10_000;
 const ALLOWED_FOR_MS = 60e3;
 const ALLOWED_MAX = 1000;
+
+// This service's calls and their records. The sink writes to the bucket of the request
+// at hand, as a Worker's bindings come with each request.
+const current = { env: null };
+export const callLog = {
+  sink: new StorageSink({ storage: "calls_storage" }, {
+    sender: "storage", version: "storage", bucket: { put: (key, data) => current.env.STORAGE.put(key, data) },
+  }),
+};
+callLog.caller = new Caller("storage", "worker", { sink: callLog.sink });
 
 // The yeses GitHub gave, by sha256(token, repository): { login, app, until }.
 // now is the clock, which the tests set.
@@ -149,7 +166,10 @@ function isJson(b) {
 
 // env: STORAGE, the R2 bucket.
 // tenants: tenants.json, or the tests' own.
-export async function handle(request, env, tenants = TENANTS) {
+// waitUntil: the request's, for the call log's writes after the answer.
+export async function handle(request, env, tenants = TENANTS, { waitUntil } = {}) {
+  current.env = env;
+  callLog.sink.waitUntil = waitUntil;
   const url = new URL(request.url);
   const tenantId = url.pathname.split("/")[1];
   const tenant = tenants[tenantId];
@@ -491,13 +511,15 @@ async function editor(request, repository) {
   return who;
 }
 
-// GitHub's answer, or a 503 if it gives none in time.
+// GitHub's answer, or a 503 if it gives none in time or fails.
 async function gitHub(url, headers) {
   try {
-    return await fetch(url, { headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    return await callLog.caller.call("github.repo-ops", "check-push", { method: "GET", url, headers });
   } catch (err) {
-    if (err?.name === "TimeoutError") throw status(503, `GitHub didn't answer within ${TIMEOUT_MS / 1000} s; try again`);
-    throw status(503, `GitHub can't be reached: ${err?.message || err}`);
+    if (!(err instanceof Unavailable)) throw err;
+    if (err.answer) throw status(503, `GitHub said ${err.answer.status}; try again`);
+    if (/timed out/.test(err.detail)) throw status(503, `GitHub didn't answer within ${TIMEOUT_MS / 1000} s; try again`);
+    throw status(503, `GitHub can't be reached: ${err.detail.replace(/^no answer: /, "")}`);
   }
 }
 

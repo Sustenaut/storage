@@ -2,7 +2,8 @@
 // GitHub answered here.
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { handle, clean, jpegSize, allowedCache } from "../src/storage.js";
+import { handle, clean, jpegSize, allowedCache, callLog } from "../src/storage.js";
+import { POLICIES } from "@sustenaut/integrations/caller.js";
 import REAL_TENANTS from "../tenants.json" with { type: "json" };
 
 // A JPEG's first bytes, with a start-of-frame giving its size.
@@ -499,4 +500,43 @@ test("GitHub that can't be reached at all is a 503 too", async () => {
   assert.equal(response.status, 503);
   assert.match((await response.json()).error, /can't be reached: fetch failed/);
   globalThis.fetch = answering;
+});
+
+test("each call to GitHub is a record of github.repo-ops check-push, tried once, as a person waits on it", async () => {
+  callLog.sink.waiting.calls_storage.length = 0;
+  assert.equal(POLICIES.H.timeout * 1000, 10_000);
+  assert.equal((await upload("good", { "480.jpg": jpeg(480, 360) })).status, 200);
+  const records = callLog.sink.waiting.calls_storage.map((r) => [r.repo, r.app, r.plugin, r.operation, r.status, r.outcome]);
+  assert.deepEqual(records, [["storage", "worker", "github.repo-ops", "check-push", 200, "ok"], ["storage", "worker", "github.repo-ops", "check-push", 200, "ok"]]);
+  assert.ok(!JSON.stringify(callLog.sink.waiting).includes("good"), "no token in a record");
+  const answering = globalThis.fetch;
+  let tries = 0;
+  globalThis.fetch = async () => (tries++, new Response("{}", { status: 502 }));
+  allowedCache.entries.clear();
+  const failed = await upload("good", { "480.jpg": jpeg(480, 361) });
+  assert.equal(failed.status, 503);
+  assert.match((await failed.json()).error, /GitHub said 502; try again/);
+  assert.equal(tries, 1);
+  globalThis.fetch = answering;
+});
+
+test("the call log goes into the calls-storage buffer through the bucket, finished after the answer", async () => {
+  const handed = [];
+  callLog.sink.started = 0; // a file is due
+  const form = new FormData();
+  form.append("480.jpg", new Blob([jpeg(480, 360)]), "480.jpg");
+  const request = new Request("https://storage.example/visit-ee/upload", { method: "POST", body: form, headers: { Authorization: "Bearer good" } });
+  assert.equal((await handle(request, env, TENANTS, { waitUntil: (p) => handed.push(p) })).status, 200);
+  assert.equal(handed.length, 1);
+  await handed[0];
+  const files = [...env.STORAGE.objects.keys()].filter((k) => k.startsWith("calls-storage/"));
+  assert.equal(files.length, 1);
+  assert.match(files[0], /^calls-storage\/inbox\/calls\/\d{4}-\d{2}-\d{2}\/\d{6}-storage-[0-9a-f]{16}\.avro$/);
+  assert.deepEqual([...env.STORAGE.objects.get(files[0]).bytes.slice(0, 4)], [0x4f, 0x62, 0x6a, 0x01]);
+});
+
+test("the calls-storage tenant is the call log's buffer: only ingest reads, writes or deletes through the API", () => {
+  assert.deepEqual(REAL_TENANTS["calls-storage"], {
+    private: true, inbox: true, read: ["k8s:integrations/ingest"], write: ["k8s:integrations/ingest"], delete: ["k8s:integrations/ingest"],
+  });
 });
