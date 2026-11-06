@@ -197,7 +197,8 @@
       "k8s:integrations/ingest"
     ],
     "write": [
-      "k8s:observability/evaluator"
+      "k8s:observability/evaluator",
+      "k8s:integrations/ingest"
     ],
     "delete": [
       "k8s:integrations/ingest"
