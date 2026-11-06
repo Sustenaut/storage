@@ -202,5 +202,18 @@
     "delete": [
       "k8s:integrations/ingest"
     ]
+  },
+  "calls-storage": {
+    "private": true,
+    "inbox": true,
+    "read": [
+      "k8s:integrations/ingest"
+    ],
+    "write": [
+      "k8s:integrations/ingest"
+    ],
+    "delete": [
+      "k8s:integrations/ingest"
+    ]
   }
 }

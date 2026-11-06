@@ -39,11 +39,13 @@ An upload has to carry the editor's GitHub token
 the tenant's `repository`. The person who may change the site's content is
 the one who may add its photos.
 
-GitHub's yes is kept for a minute (in memory, by a hash of the token and
+The check is integrations' `Caller` (`@sustenaut/integrations`, pinned to a release
+tag), as `github.repo-ops` `check-push`: a 10-second timeout, one try, and a record of
+each call in this service's call-log buffer, `calls-storage`. GitHub's yes is kept for a minute (in memory, by a hash of the token and
 repository), so an upload of many sizes or files asks GitHub once; a
 revoked push permission can therefore still upload for up to a minute. A
-no is never kept. GitHub not answering within 10 seconds is a 503, to try
-again, not a 403.
+no is never kept. GitHub not answering within 10 seconds, or failing, is a
+503, to try again, not a 403.
 
 A service can upload with its GitHub App's installation token (`ghs_…`)
 instead. Such a token can't say who its user is, so the check is different:
@@ -97,7 +99,7 @@ without `kept` doesn't unkeep it.
 | `publications` (private) | pub.sustenaut.eu's publet objects | each publication release's `publication-0-objects.tar.gz`, uploaded by Sustenaut/business-plan's main and read by Sustenaut/pub-site and Sustenaut/estimate; all kept |
 | `pdc` | pub.sustenaut.eu's copy of the PDC's signed objects (cbor) and their reading data (json), public like the PDC's own repository; all kept, written by Sustenaut/pub-site's main | a CID is a file's SHA-256, so each is at an address worked out from its CID |
 | `release-sustenaut`, `release-schryer` (private) | the release control plane's board snapshots, one tenant per GitHub owner | json files, all kept, written by each owner's release-controlplane main, and each read by its own owner's deployment alone (`k8s:release/app`, `k8s:release-schryer/app`); a `board` head names the latest |
-| `calls-integrations`, `calls-visit-ee`, `calls-opportunity-site`, `calls-business-plan` (private) | the integrations call log's buffers, one tenant per consuming project (see Buffers below): written by the services that make the calls, loaded and deleted by its ingest pod alone. |
+| `calls-integrations`, `calls-visit-ee`, `calls-opportunity-site`, `calls-business-plan`, `calls-storage` (private) | the integrations call log's buffers, one tenant per consuming project (see Buffers below): written by the services that make the calls, loaded and deleted by its ingest pod alone. `calls-storage` is this service's own: it writes it straight into the bucket. |
 | `signals` (private) | Sustenaut/observability's signals, a buffer (see Buffers below) | written by observability's evaluator (`k8s:observability/evaluator`), loaded into BigQuery and deleted by the integrations ingest pod alone (`k8s:integrations/ingest`) |
 | `facts` (private) | Sustenaut/business-plan's facts registry | its signed publet objects (cbor), all kept; uploaded by its editors from their own machines and read by business-plan's main |
 | `sources` (private, its pdfs public) | Sustenaut/business-plan's sources corpus | papers (pdf) whose licence allows it, which come from elsewhere and stay public at the addresses signed records name; signed publet objects (cbor, named by their SHA-256 like any file) and their indexes (json); all kept, never cleaned; read by business-plan's main (the review site's image build) |
