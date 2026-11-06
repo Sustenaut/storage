@@ -189,5 +189,18 @@
     "delete": [
       "k8s:integrations/ingest"
     ]
+  },
+  "signals": {
+    "private": true,
+    "inbox": true,
+    "read": [
+      "k8s:integrations/ingest"
+    ],
+    "write": [
+      "k8s:observability/evaluator"
+    ],
+    "delete": [
+      "k8s:integrations/ingest"
+    ]
   }
 }
