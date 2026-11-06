@@ -502,13 +502,25 @@ test("GitHub that can't be reached at all is a 503 too", async () => {
   globalThis.fetch = answering;
 });
 
+// The call-log Durable Object's binding, keeping what each request sends it.
+function callLogBinding() {
+  const sent = [];
+  return {
+    sent,
+    idFromName: (name) => ({ name }),
+    get: (id) => ({ fetch: async (url, init) => (sent.push({ id: id.name, url, body: JSON.parse(init.body) }), Response.json({ kept: 1 })) }),
+  };
+}
+
 test("each call to GitHub is a record of github.repo-ops check-push, tried once, as a person waits on it", async () => {
-  callLog.sink.waiting.calls_storage.length = 0;
   assert.equal(POLICIES.H.timeout * 1000, 10_000);
+  env.CALL_LOG = callLogBinding();
   assert.equal((await upload("good", { "480.jpg": jpeg(480, 360) })).status, 200);
-  const records = callLog.sink.waiting.calls_storage.map((r) => [r.repo, r.app, r.plugin, r.operation, r.status, r.outcome]);
+  const [{ id, url, body }] = env.CALL_LOG.sent;
+  assert.deepEqual([id, url, body.sender], ["storage", "https://call-log/records", "storage"]);
+  const records = body.records.map((r) => [r.repo, r.app, r.plugin, r.operation, r.status, r.outcome]);
   assert.deepEqual(records, [["storage", "worker", "github.repo-ops", "check-push", 200, "ok"], ["storage", "worker", "github.repo-ops", "check-push", 200, "ok"]]);
-  assert.ok(!JSON.stringify(callLog.sink.waiting).includes("good"), "no token in a record");
+  assert.ok(!JSON.stringify(body).includes("good"), "no token in a record");
   const answering = globalThis.fetch;
   let tries = 0;
   globalThis.fetch = async () => (tries++, new Response("{}", { status: 502 }));
@@ -520,19 +532,28 @@ test("each call to GitHub is a record of github.repo-ops check-push, tried once,
   globalThis.fetch = answering;
 });
 
-test("the call log goes into the calls-storage buffer through the bucket, finished after the answer", async () => {
+test("a request's records go to the call log in one call, handed to waitUntil so the answer doesn't wait", async () => {
   const handed = [];
-  callLog.sink.started = 0; // a file is due
+  env.CALL_LOG = callLogBinding();
   const form = new FormData();
   form.append("480.jpg", new Blob([jpeg(480, 360)]), "480.jpg");
   const request = new Request("https://storage.example/visit-ee/upload", { method: "POST", body: form, headers: { Authorization: "Bearer good" } });
   assert.equal((await handle(request, env, TENANTS, { waitUntil: (p) => handed.push(p) })).status, 200);
   assert.equal(handed.length, 1);
   await handed[0];
-  const files = [...env.STORAGE.objects.keys()].filter((k) => k.startsWith("calls-storage/"));
-  assert.equal(files.length, 1);
-  assert.match(files[0], /^calls-storage\/inbox\/calls\/\d{4}-\d{2}-\d{2}\/\d{6}-storage-[0-9a-f]{16}\.avro$/);
-  assert.deepEqual([...env.STORAGE.objects.get(files[0]).bytes.slice(0, 4)], [0x4f, 0x62, 0x6a, 0x01]);
+  assert.equal(env.CALL_LOG.sent.length, 1);
+  assert.equal(env.CALL_LOG.sent[0].body.records.length, 2);
+  // A request that made no calls sends nothing.
+  await handle(new Request("https://storage.example/nope"), env, TENANTS, { waitUntil: (p) => handed.push(p) });
+  await handed[1];
+  assert.equal(env.CALL_LOG.sent.length, 1);
+});
+
+test("without the binding the records are let go, and nothing is written to the bucket", async () => {
+  delete env.CALL_LOG;
+  assert.equal((await upload("good", { "480.jpg": jpeg(480, 360) })).status, 200);
+  assert.deepEqual(callLog.sink.pending, []);
+  assert.ok(![...env.STORAGE.objects.keys()].some((k) => k.startsWith("calls-storage/")));
 });
 
 test("the calls-storage tenant is the call log's buffer: only ingest reads, writes or deletes through the API", () => {
