@@ -215,5 +215,20 @@
     "delete": [
       "k8s:integrations/ingest"
     ]
+  },
+  "calls-release-controlplane": {
+    "private": true,
+    "inbox": true,
+    "read": [
+      "k8s:integrations/ingest"
+    ],
+    "write": [
+      "k8s:release/app",
+      "k8s:release-schryer/app",
+      "k8s:integrations/ingest"
+    ],
+    "delete": [
+      "k8s:integrations/ingest"
+    ]
   }
 }
