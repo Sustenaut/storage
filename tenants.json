@@ -134,6 +134,35 @@
       "kept": true
     }
   },
+  "plane": {
+    "private": true,
+    "heads": true,
+    "read": [
+      "github:Sustenaut/observability@refs/heads/main",
+      "github:Sustenaut/notifier@refs/heads/main",
+      "github:Sustenaut/integrations@refs/heads/main",
+      "github:Sustenaut/release-controlplane@refs/heads/main",
+      "github:Sustenaut/opportunity-site@refs/heads/main",
+      "github:Sustenaut/notebooks@refs/heads/main",
+      "github:Sustenaut/auth@refs/heads/main"
+    ],
+    "write": [
+      "github:Sustenaut/observability@refs/heads/main",
+      "github:Sustenaut/notifier@refs/heads/main",
+      "github:Sustenaut/integrations@refs/heads/main",
+      "github:Sustenaut/release-controlplane@refs/heads/main",
+      "github:Sustenaut/opportunity-site@refs/heads/main",
+      "github:Sustenaut/notebooks@refs/heads/main",
+      "github:Sustenaut/auth@refs/heads/main"
+    ],
+    "files": {
+      "types": [
+        "json"
+      ],
+      "max_bytes": 1048576,
+      "kept": true
+    }
+  },
   "calls-integrations": {
     "private": true,
     "inbox": true,

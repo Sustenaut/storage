@@ -70,7 +70,7 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-const request = async (path, { method = "GET", as = WRITE, ref, headers = {}, body } = {}) =>
+const request = async (path, { method = "GET", as = WRITE, ref, headers = {}, body, tenants = TENANTS } = {}) =>
   handle(
     new Request(`https://storage.example${path}`, {
       method,
@@ -78,7 +78,7 @@ const request = async (path, { method = "GET", as = WRITE, ref, headers = {}, bo
       body,
     }),
     env,
-    TENANTS,
+    tenants,
   );
 
 async function store(text, name = "board.json", tenant = "snaps") {
@@ -283,4 +283,43 @@ test("one deployment's token can't read the other's tenant", () => {
   assert.equal(can("release-schryer", "k8s:release/app"), false);
   assert.equal(can("release-sustenaut", "github:schryer/release-controlplane@refs/heads/main"), false);
   assert.equal(can("release-schryer", "github:Sustenaut/release-controlplane@refs/heads/main"), false);
+});
+
+const PLANE = ["observability", "notifier", "integrations", "release-controlplane", "opportunity-site", "notebooks", "auth"];
+
+test("the plane tenant is read and written by each plane repository's main alone", () => {
+  const t = REAL_TENANTS.plane;
+  const mains = PLANE.map((r) => `github:Sustenaut/${r}@refs/heads/main`);
+  assert.equal(t.private, true);
+  assert.equal(t.heads, true);
+  assert.deepEqual(t.read, mains);
+  assert.deepEqual(t.write, mains);
+  assert.deepEqual(t.files, { types: ["json"], max_bytes: 1048576, kept: true });
+  assert.equal(t.repository, undefined);
+});
+
+test("one plane repository's main writes a head another reads; others can't", async () => {
+  const plane = (path, opts = {}) => request(path, { as: "Sustenaut/observability", tenants: REAL_TENANTS, ...opts });
+  const upload = (text, opts = {}, name = "state.json") => {
+    const form = new FormData();
+    form.append("file", new Blob([text]), name);
+    return plane("/plane/files", { method: "POST", body: form, ...opts });
+  };
+  const stored = await upload('{"a":1}');
+  assert.equal(stored.status, 200);
+  const hash = (await stored.json()).id;
+  const moved = await plane("/plane/head/board", { method: "PUT", headers: first, body: JSON.stringify({ hash }), as: "Sustenaut/notifier" });
+  assert.equal(moved.status, 200);
+  for (const r of PLANE) {
+    const read = await plane("/plane/head/board", { as: `Sustenaut/${r}` });
+    assert.equal(read.status, 200, r);
+    assert.equal(await read.text(), '{"a":1}');
+  }
+  assert.equal((await plane("/plane/head/board", { as: "Sustenaut/stranger" })).status, 403);
+  assert.equal((await plane("/plane/head/board", { as: "Sustenaut/notifier", ref: "refs/heads/feature" })).status, 403);
+  assert.equal((await plane("/plane/head/board", { as: null })).status, 401);
+  assert.equal((await upload("{}", { as: "Sustenaut/stranger" })).status, 403);
+  assert.equal((await upload("{}", { ref: "refs/heads/feature" })).status, 403);
+  assert.equal((await upload("{}", {}, "state.pdf")).status, 415);
+  assert.equal((await upload(`"${"x".repeat(1048576)}"`)).status, 413);
 });
