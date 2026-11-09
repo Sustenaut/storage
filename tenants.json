@@ -301,5 +301,18 @@
       "max_bytes": 26214400,
       "kept": true
     }
+  },
+  "terraform": {
+    "write": [
+      "github:Sustenaut/storage@refs/heads/main"
+    ],
+    "providers": true,
+    "files": {
+      "types": [
+        "zip"
+      ],
+      "max_bytes": 104857600,
+      "kept": true
+    }
   }
 }

@@ -28,6 +28,11 @@
 //                                            with "files", or its buffer's
 //                                            (?prefix=inbox/ and so on), name order,
 //                                            a page at a time
+//   GET,HEAD /{tenant}/{hostname}/{namespace}/{type}/{index}
+//                                            Terraform's provider network mirror
+//                                            ({index} is index.json or
+//                                            <version>.json), for tenants with
+//                                            "providers"
 //   POST /_clean                             the nightly clean-up
 //
 // An upload is the sizes the editor made in the browser (multipart fields
@@ -113,6 +118,12 @@ const BUFFER_PREFIX = /^(inbox|batches|rejected)\/(?:[A-Za-z0-9][A-Za-z0-9._-]*\
 const FILE_PREFIX = /^f\/(?:[0-9a-f]{0,63}|[0-9a-f]{64}(?:\/[A-Za-z0-9._-]{0,120})?)$/;
 const BUFFER_MAX_BYTES = 50 * 1024 * 1024;
 const LIST_LIMIT = 1000;
+// Terraform's provider network mirror protocol, for a tenant with "providers":
+// GET /<tenant>/<hostname>/<namespace>/<type>/index.json and .../<version>.json.
+const PROVIDER_INDEX = /^\/([a-z0-9-]+)\/((?:[a-z0-9-]+\.)+[a-z]{2,})\/([a-z0-9-]{1,64})\/([a-z0-9-]{1,64})\/(index|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]{1,32})?)\.json$/;
+const PROVIDER_SUBJECT = /^((?:[a-z0-9-]+\.)+[a-z]{2,})\/([a-z0-9-]{1,64})\/([a-z0-9-]{1,64})$/;
+const PROVIDER_ARCHIVE = /^terraform-provider-([a-z0-9-]{1,64})_(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]{1,32})?)_([a-z0-9]{1,16})_([a-z0-9]{1,16})\.zip$/;
+const PROVIDER_INDEX_SECONDS = 300;
 const TIMEOUT_MS = 10_000;
 const ALLOWED_FOR_MS = 60e3;
 const ALLOWED_MAX = 1000;
@@ -132,7 +143,7 @@ export const allowedCache = { now: () => Date.now(), entries: new Map() };
 // The file types a tenant may allow: Content-Type, whether a browser shows
 // it inline, and a check of its first bytes.
 const ascii = (b, at, text) => String.fromCharCode(...b.slice(at, at + text.length)) === text;
-const isZip = (b) => ascii(b, 0, "PK\x03\x04"); // docx, pptx, xlsx and whl are zip archives
+const isZip = (b) => ascii(b, 0, "PK\x03\x04"); // docx, pptx, xlsx and whl are zip archives, as zip is
 const isText = (b) => !b.slice(0, 4096).includes(0);
 export const FILE_TYPES = {
   pdf: { type: "application/pdf", inline: true, check: (b) => ascii(b, 0, "%PDF-") },
@@ -153,6 +164,8 @@ export const FILE_TYPES = {
   gz: { type: "application/gzip", inline: false, check: (b) => b[0] === 0x1f && b[1] === 0x8b },
   // A Python wheel is a zip archive. It is served as one: pip and uv go by its name.
   whl: { type: "application/zip", inline: false, check: isZip },
+  // A Terraform provider's release archive.
+  zip: { type: "application/zip", inline: false, check: isZip },
   avro: { type: "application/avro", inline: false, check: (b) => b[0] === 0x4f && b[1] === 0x62 && b[2] === 0x6a && b[3] === 0x01 },
 };
 
@@ -201,6 +214,10 @@ async function answer(request, env, tenants) {
       const answered = await buffer(request, env, url, tenantId, tenant);
       if (answered) return answered;
     }
+    if (tenant.providers && (request.method === "GET" || request.method === "HEAD")) {
+      const route = url.pathname.match(PROVIDER_INDEX);
+      if (route && route[1] === tenantId) return await providerIndex(request, env, url, route);
+    }
     if (request.method === "GET" || request.method === "HEAD") return await serve(url, env, request, tenant);
     if (request.method === "PUT") return await moveHead(request, env, url, tenant);
     if (request.method === "POST" && url.pathname === `/${tenantId}/upload`) return json(await upload(request, env, tenantId, tenant), 200, cors);
@@ -240,6 +257,49 @@ function fileEntry(tenantId, o) {
   for (const key of ["label", "kept", "by", "for", "subject"]) if (meta[key] !== undefined) metadata[key] = meta[key];
   const uploaded = meta.uploaded || new Date(o.uploaded).toISOString();
   return { name, id, url: `/${o.key}`, size: o.size, uploaded, metadata };
+}
+
+// Terraform's provider network mirror protocol, from the archives a tenant
+// with "providers" keeps: each uploaded with its provider's address
+// (<hostname>/<namespace>/<type>) as its subject, and named as the provider's
+// release names it. An archive's id is its SHA-256, which is the "zh:" hash a
+// .terraform.lock.hcl pins, so Terraform checks what it gets here. Short
+// lived at Cloudflare and in a client, as a new version can come in.
+async function providerIndex(request, env, url, route) {
+  const [, tenantId, hostname, namespace, type, asked] = route;
+  const subject = `${hostname}/${namespace}/${type}`;
+  const versions = {};
+  let cursor;
+  do {
+    const page = await env.STORAGE.list({ prefix: `${tenantId}/f/`, cursor, include: ["customMetadata"] });
+    for (const o of page.objects) {
+      if (o.customMetadata?.subject !== subject) continue;
+      const [, , id, name] = o.key.split("/");
+      const archive = name.match(PROVIDER_ARCHIVE);
+      if (!archive || archive[1] !== type) continue;
+      const [, , version, os, arch] = archive;
+      versions[version] ??= {};
+      versions[version][`${os}_${arch}`] = { url: `${url.origin}/${o.key}`, hashes: [`zh:${id}`] };
+    }
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  const headers = { "Cache-Control": `public, max-age=${PROVIDER_INDEX_SECONDS}`, "Access-Control-Allow-Origin": "*" };
+  if (asked === "index") return json({ versions: Object.fromEntries(Object.keys(versions).sort(byVersion).map((v) => [v, {}])) }, 200, headers);
+  if (!versions[asked]) throw status(404, `${subject} ${asked} isn't mirrored here`);
+  return json({ archives: versions[asked] }, 200, headers);
+}
+
+// Versions in release order: 9.0.0 before 10.0.0, and a prerelease before its release.
+export function byVersion(a, b) {
+  const [ma, pa = ""] = a.split(/-(.*)/s);
+  const [mb, pb = ""] = b.split(/-(.*)/s);
+  const na = ma.split(".").map(Number);
+  const nb = mb.split(".").map(Number);
+  for (let i = 0; i < 3; i++) if (na[i] !== nb[i]) return na[i] - nb[i];
+  if (pa === pb) return 0;
+  if (!pa) return 1;
+  if (!pb) return -1;
+  return pa.localeCompare(pb);
 }
 
 // A request for a tenant's buffer; nothing if it's for something else.
@@ -447,6 +507,7 @@ export async function uploadFile(request, env, tenantId, tenant) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (bytes.length > max) throw status(413, `${name} is over ${max} bytes`);
   if (!kind.check(bytes)) throw status(400, `${name} is not a .${ext} file`);
+  if (tenant.providers) providerUpload(name, String(form.get("subject") || "").trim());
   const label = String(form.get("label") || "").trim().slice(0, LABEL_CHARS);
   // What the file is about, such as a card, so a listing can find a subject's files.
   const subject = String(form.get("subject") || "").trim().slice(0, LABEL_CHARS);
@@ -464,6 +525,15 @@ export async function uploadFile(request, env, tenantId, tenant) {
   if (who.app && form.get("for")) customMetadata.for = String(form.get("for")).slice(0, LABEL_CHARS);
   await env.STORAGE.put(key, bytes, { httpMetadata: { contentType: kind.type }, customMetadata });
   return { id, name, url: `/${key}`, type: kind.type, size: bytes.length, label, subject, kept: keep };
+}
+
+// A provider archive is kept under its provider's address, as its release names it.
+function providerUpload(name, subject) {
+  const archive = name.match(PROVIDER_ARCHIVE);
+  if (!archive) throw status(400, "a provider archive is named terraform-provider-<type>_<version>_<os>_<arch>.zip");
+  const address = subject.match(PROVIDER_SUBJECT);
+  if (!address) throw status(400, "the subject is the provider's address, <hostname>/<namespace>/<type>");
+  if (address[3] !== archive[1]) throw status(400, `${name} is not an archive of ${subject}`);
 }
 
 // Who may write to the tenant: an OpenID Connect token's principal in its

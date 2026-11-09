@@ -25,6 +25,7 @@
       "plugin": "github.actions-oidc",
       "paths": [
         ".github/workflows/mirror.yml",
+        "mirror/terraform.sh",
         "mirror/wheels.sh",
         "src/jwt.js"
       ],

@@ -1098,6 +1098,69 @@
         }
       }
     },
+    "/{tenant}/{hostname}/{namespace}/{type}/{index}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/tenant"
+        },
+        {
+          "$ref": "#/components/parameters/providerHostname"
+        },
+        {
+          "$ref": "#/components/parameters/providerNamespace"
+        },
+        {
+          "$ref": "#/components/parameters/providerType"
+        },
+        {
+          "$ref": "#/components/parameters/providerIndex"
+        }
+      ],
+      "get": {
+        "operationId": "getProviderMirror",
+        "summary": "A provider's mirrored versions, or one version's archives, for a tenant with providers",
+        "security": [
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "The versions, or one version's archives",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderMirror"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      },
+      "head": {
+        "operationId": "headProviderMirror",
+        "summary": "The same, without the body",
+        "security": [
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "The versions, or one version's archives",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderMirror"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      }
+    },
     "/_clean": {
       "post": {
         "operationId": "clean",
@@ -1223,6 +1286,45 @@
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,119}\\.json$"
         },
         "example": "job-1.json"
+      },
+      "providerHostname": {
+        "name": "hostname",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "example": "registry.terraform.io",
+        "description": "The provider's registry"
+      },
+      "providerNamespace": {
+        "name": "namespace",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "example": "hashicorp"
+      },
+      "providerType": {
+        "name": "type",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "example": "google"
+      },
+      "providerIndex": {
+        "name": "index",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^(index|\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?)\\.json$"
+        },
+        "example": "index.json",
+        "description": "index.json for the versions, <version>.json for one version's archives"
       }
     },
     "responses": {
@@ -1609,6 +1711,54 @@
             }
           }
         }
+      },
+      "ProviderMirror": {
+        "description": "Terraform's provider network mirror protocol: index.json gives versions, <version>.json gives archives, each by platform with its URL and its zh: hash (the archive's SHA-256)",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "versions"
+            ],
+            "properties": {
+              "versions": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "archives"
+            ],
+            "properties": {
+              "archives": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "required": [
+                    "url",
+                    "hashes"
+                  ],
+                  "properties": {
+                    "url": {
+                      "type": "string"
+                    },
+                    "hashes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
       }
     }
   }

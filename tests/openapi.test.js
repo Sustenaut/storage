@@ -66,7 +66,7 @@ test("the spec has every route the header of src/storage.js lists, and no other"
 // a request that reaches its route gets past the route's own checks or fails them, but
 // never gets "no such route".
 const TENANTS = {
-  all: { private: true, editors: true, repository: "o/all", files: { types: ["pdf"] }, heads: true, inbox: true, read: [], write: [], delete: [] },
+  all: { private: true, editors: true, repository: "o/all", files: { types: ["pdf"] }, heads: true, inbox: true, providers: true, read: [], write: [], delete: [] },
 };
 const bucket = {
   get: async () => null,
