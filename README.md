@@ -69,7 +69,7 @@ A tenant that has `files` in `tenants.json` can store files besides photos:
 
 | `files` key | What |
 |---|---|
-| `types` | The extensions it takes, from pdf, pptx, docx, xlsx, csv, txt, png, jpg, jpeg, webp, gif, svg, cbor, json, gz, avro and whl. |
+| `types` | The extensions it takes, from pdf, pptx, docx, xlsx, csv, txt, png, jpg, jpeg, webp, gif, svg, cbor, json, gz, avro, whl and zip. |
 | `max_bytes` | The largest file, 25 MB when not given (Pages takes at most 100 MB a request). |
 | `kept` | `true` keeps every upload, as if each were sent with `kept=true`. |
 
@@ -107,6 +107,7 @@ without `kept` doesn't unkeep it.
 | `notifier` (private) | Sustenaut/notifier's state: which signals it has posted | small json files, written and read by the notifier's pod alone (`k8s:notifier/app`); a `posted` head names the latest, moved with `If-Match` so two runs can't both win. It writes a new file only when it has posted something. |
 | `facts` (private) | Sustenaut/business-plan's facts registry | its signed publet objects (cbor), all kept; uploaded by its editors from their own machines and read by business-plan's main |
 | `sources` (private, its pdfs public) | Sustenaut/business-plan's sources corpus | papers (pdf) whose licence allows it, which come from elsewhere and stay public at the addresses signed records name; signed publet objects (cbor, named by their SHA-256 like any file) and their indexes (json); all kept, never cleaned; read by business-plan's main (the review site's image build) |
+| `terraform` | the Terraform providers CI uses, copied from their registries by the mirror workflow, served by Terraform's network mirror protocol (see The mirror below) | zip files, public, all kept, never cleaned; written by Sustenaut/storage's main alone |
 | `wheels` | the wheels of Sustenaut's public releases, copied from GitHub by this repository's own mirror workflow (see The mirror below) | whl files, public, all kept, never cleaned; written by Sustenaut/storage's main alone |
 
 ### Buffers
@@ -284,6 +285,33 @@ hash. The workflow writes with its own OpenID Connect token on main, so no
 package's release changes and no secret is kept. A wheel released less than
 an hour ago may not be copied yet; run the workflow by hand to copy it now.
 `DRY_RUN=1 mirror/wheels.sh` lists what a run would copy.
+
+**Terraform providers.** `mirror/terraform.sh` copies the providers
+`mirror/sources.json` names into the `terraform` tenant, each from the
+version given there on, for each platform listed (CI's `linux_amd64`). The
+modules' locks are mostly in private repositories this workflow can't read,
+so the versions come from the registry: every release since the one given,
+which the nightly only ever moves past. Raise a provider's version once no
+lock pins anything older, and add a provider before a module uses it.
+
+A tenant with `"providers": true` serves Terraform's
+[provider network mirror protocol](https://developer.hashicorp.com/terraform/internals/provider-network-mirror-protocol)
+from its archives: `GET /terraform/<hostname>/<namespace>/<type>/index.json`
+lists the versions here, and `.../<version>.json` each platform's archive
+with its `zh:` hash, which is the archive's SHA-256 and so its id here.
+An archive is uploaded named as its release names it
+(`terraform-provider-<type>_<version>_<os>_<arch>.zip`), with its
+provider's address as its `subject`. A Terraform CLI configuration that
+uses it:
+
+```hcl
+provider_installation {
+  network_mirror { url = "https://storage.sustenaut.eu/terraform/" }
+}
+```
+
+Terraform checks each archive against the module's lock, so here too
+storage only has to be there.
 
 ### The clean-up
 
