@@ -1,0 +1,35 @@
+# Hourly: copies the files our installs pin from GitHub into storage, so an
+# install can fall back to storage when a download from GitHub fails
+# (mirror/). It needs no secret: storage takes this workflow's OpenID
+# Connect token on main, and GitHub's own token reads the public releases.
+# It stays off with the deploy, until STORAGE_DEPLOY is "on".
+name: mirror
+
+on:
+  schedule:
+    - cron: "23 * * * *"
+  push:
+    branches: [main]
+    paths: [mirror/**, .github/workflows/mirror.yml]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: mirror
+  cancel-in-progress: false
+
+jobs:
+  wheels:
+    if: vars.STORAGE_DEPLOY == 'on' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - name: Copy our releases' wheels
+        run: mirror/wheels.sh
+        env:
+          GH_TOKEN: ${{ github.token }}

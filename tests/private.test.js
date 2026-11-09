@@ -52,6 +52,7 @@ const TENANTS = {
   photos: { repository: "schryer/visit-ee", origins: [], write: ["github:schryer/visit-ee@refs/heads/main"], files: { types: ["pdf"] } },
   // A public tenant that takes only GitHub tokens.
   plain: { repository: "schryer/visit-ee", origins: [], files: { types: ["pdf"] } },
+  wheels: REAL_TENANTS.wheels,
 };
 const call = (request) => handle(request, env, TENANTS);
 const gz = () => new Uint8Array([0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 3, 1, 2, 3]);
@@ -165,6 +166,36 @@ test("a public tenant takes a workflow's token when its write list names it, and
   assert.equal(read.status, 200, "public files need no token");
   assert.equal(read.headers.get("Access-Control-Allow-Origin"), "*");
   assert.match(read.headers.get("Cache-Control"), /public/);
+});
+
+test("the wheels tenant is public, kept, never cleaned, and only storage's own main writes it", () => {
+  const t = REAL_TENANTS.wheels;
+  assert.equal(t.private, undefined);
+  assert.equal(t.repository, undefined, "no editors: no GitHub token can write here");
+  assert.deepEqual(t.write, ["github:Sustenaut/storage@refs/heads/main"]);
+  assert.deepEqual(t.files, { types: ["whl"], max_bytes: 26214400, kept: true });
+  assert.equal(t.in_use, undefined, "nothing is cleaned");
+});
+
+test("a mirrored wheel is at the address its lock's sha256 names, for anyone, and a .whl must be a zip", async () => {
+  const wheel = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 1, 2, 3, 4]);
+  const sha = Buffer.from(await crypto.subtle.digest("SHA-256", wheel)).toString("hex");
+  const name = "pubkit-0.31.3-py3-none-any.whl";
+  const response = await put("wheels", await token("Sustenaut/storage"), name, wheel);
+  assert.equal(response.status, 200);
+  const file = await response.json();
+  assert.equal(file.url, `/wheels/f/${sha}/${name}`);
+  assert.equal(file.kept, true);
+  const read = await get(`/wheels/f/${sha}/${name}`);
+  assert.equal(read.status, 200, "no token needed");
+  assert.equal(read.headers.get("Content-Type"), "application/zip");
+  assert.deepEqual(new Uint8Array(await read.arrayBuffer()), wheel);
+
+  assert.equal((await put("wheels", await token("Sustenaut/storage", "refs/heads/x"), name, wheel)).status, 403, "only main");
+  assert.equal((await put("wheels", await token("Sustenaut/pubkit"), name, wheel)).status, 403, "the packages don't write it");
+  assert.equal((await put("wheels", "good", name, wheel)).status, 401, "nor do GitHub tokens");
+  assert.equal((await put("wheels", await token("Sustenaut/storage"), name, pdf())).status, 400, "a .whl must be a zip");
+  assert.equal((await put("wheels", await token("Sustenaut/storage"), "a.pdf", pdf())).status, 415);
 });
 
 test("tokens are refused unless RS256, from a trusted issuer, signed by its key, for this audience and in date", async () => {

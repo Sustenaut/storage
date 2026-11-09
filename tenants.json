@@ -289,5 +289,17 @@
     "delete": [
       "k8s:integrations/ingest"
     ]
+  },
+  "wheels": {
+    "write": [
+      "github:Sustenaut/storage@refs/heads/main"
+    ],
+    "files": {
+      "types": [
+        "whl"
+      ],
+      "max_bytes": 26214400,
+      "kept": true
+    }
   }
 }

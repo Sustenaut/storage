@@ -5,7 +5,7 @@
     "with": {
       "setup": "npm ci",
       "test": "npm test",
-      "shellcheck": "with-secrets"
+      "shellcheck": "with-secrets mirror/*.sh"
     }
   },
   "protect": {

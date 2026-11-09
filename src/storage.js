@@ -132,7 +132,7 @@ export const allowedCache = { now: () => Date.now(), entries: new Map() };
 // The file types a tenant may allow: Content-Type, whether a browser shows
 // it inline, and a check of its first bytes.
 const ascii = (b, at, text) => String.fromCharCode(...b.slice(at, at + text.length)) === text;
-const isZip = (b) => ascii(b, 0, "PK\x03\x04"); // docx, pptx and xlsx are zip archives
+const isZip = (b) => ascii(b, 0, "PK\x03\x04"); // docx, pptx, xlsx and whl are zip archives
 const isText = (b) => !b.slice(0, 4096).includes(0);
 export const FILE_TYPES = {
   pdf: { type: "application/pdf", inline: true, check: (b) => ascii(b, 0, "%PDF-") },
@@ -151,6 +151,8 @@ export const FILE_TYPES = {
   cbor: { type: "application/cbor", inline: false, check: (b) => b.length > 0 && b[0] >= 0xa0 && b[0] <= 0xbf },
   json: { type: "application/json", inline: true, check: isJson },
   gz: { type: "application/gzip", inline: false, check: (b) => b[0] === 0x1f && b[1] === 0x8b },
+  // A Python wheel is a zip archive. It is served as one: pip and uv go by its name.
+  whl: { type: "application/zip", inline: false, check: isZip },
   avro: { type: "application/avro", inline: false, check: (b) => b[0] === 0x4f && b[1] === 0x62 && b[2] === 0x6a && b[3] === 0x01 },
 };
 

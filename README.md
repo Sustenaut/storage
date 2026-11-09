@@ -69,12 +69,12 @@ A tenant that has `files` in `tenants.json` can store files besides photos:
 
 | `files` key | What |
 |---|---|
-| `types` | The extensions it takes, from pdf, pptx, docx, xlsx, csv, txt, png, jpg, jpeg, webp, gif, svg, cbor, json, gz and avro. |
+| `types` | The extensions it takes, from pdf, pptx, docx, xlsx, csv, txt, png, jpg, jpeg, webp, gif, svg, cbor, json, gz, avro and whl. |
 | `max_bytes` | The largest file, 25 MB when not given (Pages takes at most 100 MB a request). |
 | `kept` | `true` keeps every upload, as if each were sent with `kept=true`. |
 
 A file is checked by its extension and, where the format has one, by its
-first bytes (`%PDF-`, PNG, JPEG and so on; docx, pptx and xlsx are zip
+first bytes (`%PDF-`, PNG, JPEG and so on; docx, pptx, xlsx and whl are zip
 archives; csv, txt and svg must be text, and an svg must contain an `<svg`
 tag; a cbor file must be a CBOR map, as every publet object is, and a json
 file must parse as JSON, a gz file must start as gzip does, and an avro file as Avro does). It is served with its type, as an attachment for Office files, csv
@@ -107,6 +107,7 @@ without `kept` doesn't unkeep it.
 | `notifier` (private) | Sustenaut/notifier's state: which signals it has posted | small json files, written and read by the notifier's pod alone (`k8s:notifier/app`); a `posted` head names the latest, moved with `If-Match` so two runs can't both win. It writes a new file only when it has posted something. |
 | `facts` (private) | Sustenaut/business-plan's facts registry | its signed publet objects (cbor), all kept; uploaded by its editors from their own machines and read by business-plan's main |
 | `sources` (private, its pdfs public) | Sustenaut/business-plan's sources corpus | papers (pdf) whose licence allows it, which come from elsewhere and stay public at the addresses signed records name; signed publet objects (cbor, named by their SHA-256 like any file) and their indexes (json); all kept, never cleaned; read by business-plan's main (the review site's image build) |
+| `wheels` | the wheels of Sustenaut's public releases, copied from GitHub by this repository's own mirror workflow (see The mirror below) | whl files, public, all kept, never cleaned; written by Sustenaut/storage's main alone |
 
 ### Buffers
 
@@ -260,6 +261,29 @@ changes nothing and adds nothing to the log.
 `{"name": "board", "log": [{"hash", "time", "principal"}, …]}`, newest first,
 starting with where it points now. A head's files can't be deleted, because
 the clean-up never touches a private tenant. A head can't be deleted either.
+
+### The mirror
+
+When GitHub's release downloads fail, as they did on 2026-11-09 with 504s,
+every CI run that installs one of our wheels fails with them. So storage
+keeps a copy of each, and installs fall back to it.
+
+`.github/workflows/mirror.yml` runs hourly. `mirror/wheels.sh` lists the
+releases of every public repository of the owners in `mirror/sources.json`
+and copies each attached wheel into the `wheels` tenant, skipping the ones
+already there. A file here is named by its SHA-256, the same hash a lock
+pins, so a lock line alone gives the fallback address:
+
+```
+https://github.com/Sustenaut/pubkit/releases/download/v0.31.3/pubkit-0.31.3-py3-none-any.whl --hash=sha256:adb0…
+https://storage.sustenaut.eu/wheels/f/adb0…/pubkit-0.31.3-py3-none-any.whl
+```
+
+Storage only has to be there, never trusted: pip and uv still check the
+hash. The workflow writes with its own OpenID Connect token on main, so no
+package's release changes and no secret is kept. A wheel released less than
+an hour ago may not be copied yet; run the workflow by hand to copy it now.
+`DRY_RUN=1 mirror/wheels.sh` lists what a run would copy.
 
 ### The clean-up
 
