@@ -28,5 +28,10 @@
       "from": "sustenaut-storage-mirror-app-key",
       "to": "MIRROR_APP_KEY"
     }
+  },
+  "mirror": {
+    "wheels": "https://storage.sustenaut.eu/wheels",
+    "terraform": "https://storage.sustenaut.eu/terraform",
+    "pypi": "https://storage.sustenaut.eu/pypi"
   }
 }
