@@ -31,14 +31,14 @@ token() {
 there() { curl -fsI -o /dev/null "$STORAGE/terraform/f/$1/$2"; }
 
 # Whether version $1 is $2 or later (releases only: no -prerelease).
-since() { [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n 1)" = "$2" ]; }
+since() { [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n 1)" == "$2" ]]; }
 
 copied=0 skipped=0
 platforms="$(jq -r '.terraform.platforms[]' "$SOURCES")"
 while IFS=$'\t' read -r address from; do
   host="${address%%/*}" rest="${address#*/}"
   namespace="${rest%%/*}" type="${rest#*/}"
-  if [ "$host" != "$REGISTRY" ]; then
+  if [[ "$host" != "$REGISTRY" ]]; then
     echo "::error::$address: only $REGISTRY providers are copied"
     exit 1
   fi
@@ -54,17 +54,17 @@ while IFS=$'\t' read -r address from; do
         skipped=$((skipped + 1))
         continue
       fi
-      if [ -n "${DRY_RUN:-}" ]; then
+      if [[ -n "${DRY_RUN:-}" ]]; then
         echo "would copy $address $version $platform ($sha)"
         copied=$((copied + 1))
         continue
       fi
       curl -fsSL --retry 5 --retry-all-errors -o "$work/$name" "$url"
       actual="$(sha256sum "$work/$name" | cut -d' ' -f1)"
-      [ "$actual" = "$sha" ] || { echo "::error::$name: the registry says $sha, the download is $actual"; exit 1; }
+      [[ "$actual" == "$sha" ]] || { echo "::error::$name: the registry says $sha, the download is $actual"; exit 1; }
       id="$(curl -fsS --retry 3 --retry-all-errors -H "Authorization: Bearer $(token)" \
         -F "file=@$work/$name;filename=$name" -F "subject=$address" "$STORAGE/terraform/files" | jq -r .id)"
-      [ "$id" = "$sha" ] || { echo "::error::$name: storage named it $id, not $sha"; exit 1; }
+      [[ "$id" == "$sha" ]] || { echo "::error::$name: storage named it $id, not $sha"; exit 1; }
       echo "copied $address $version $platform ($sha)"
       copied=$((copied + 1))
       rm -f "$work/$name"

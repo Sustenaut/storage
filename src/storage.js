@@ -284,9 +284,22 @@ async function providerIndex(request, env, url, route) {
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
   const headers = { "Cache-Control": `public, max-age=${PROVIDER_INDEX_SECONDS}`, "Access-Control-Allow-Origin": "*" };
-  if (asked === "index") return json({ versions: Object.fromEntries(Object.keys(versions).sort().map((v) => [v, {}])) }, 200, headers);
+  if (asked === "index") return json({ versions: Object.fromEntries(Object.keys(versions).sort(byVersion).map((v) => [v, {}])) }, 200, headers);
   if (!versions[asked]) throw status(404, `${subject} ${asked} isn't mirrored here`);
   return json({ archives: versions[asked] }, 200, headers);
+}
+
+// Versions in release order: 9.0.0 before 10.0.0, and a prerelease before its release.
+export function byVersion(a, b) {
+  const [ma, pa = ""] = a.split(/-(.*)/s);
+  const [mb, pb = ""] = b.split(/-(.*)/s);
+  const na = ma.split(".").map(Number);
+  const nb = mb.split(".").map(Number);
+  for (let i = 0; i < 3; i++) if (na[i] !== nb[i]) return na[i] - nb[i];
+  if (pa === pb) return 0;
+  if (!pa) return 1;
+  if (!pb) return -1;
+  return pa.localeCompare(pb);
 }
 
 // A request for a tenant's buffer; nothing if it's for something else.

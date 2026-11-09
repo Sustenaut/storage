@@ -2,7 +2,7 @@
 // archives a tenant with "providers" keeps, with GitHub's OIDC issuer answered here.
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { handle } from "../src/storage.js";
+import { handle, byVersion } from "../src/storage.js";
 import { forgetKeys, AUDIENCE } from "../src/jwt.js";
 import REAL_TENANTS from "../tenants.json" with { type: "json" };
 
@@ -122,4 +122,14 @@ test("an archive is taken only named as a provider release names it, under its p
 
 test("a tenant without providers has no mirror routes", async () => {
   assert.equal((await get("/wheels/registry.terraform.io/hashicorp/google/index.json")).status, 404);
+});
+
+test("versions are listed in release order, not as text", async () => {
+  assert.deepEqual(["10.0.0", "9.1.0", "9.0.10", "9.0.9", "10.0.0-beta1", "10.0.0-alpha2"].sort(byVersion),
+    ["9.0.9", "9.0.10", "9.1.0", "10.0.0-alpha2", "10.0.0-beta1", "10.0.0"]);
+  assert.equal(byVersion("1.2.3", "1.2.3"), 0);
+  for (const [name, n] of [["terraform-provider-tls_10.0.0_linux_amd64.zip", 1], ["terraform-provider-tls_9.0.0_linux_amd64.zip", 2]])
+    assert.equal((await put(name, "registry.terraform.io/hashicorp/tls", zip(n))).status, 200);
+  const { versions } = await (await get("/terraform/registry.terraform.io/hashicorp/tls/index.json")).json();
+  assert.deepEqual(Object.keys(versions), ["9.0.0", "10.0.0"]);
 });
