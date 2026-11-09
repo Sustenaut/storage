@@ -3,41 +3,22 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { handle, byVersion } from "../src/storage.js";
-import { forgetKeys, AUDIENCE } from "../src/jwt.js";
+import { forgetKeys } from "../src/jwt.js";
 import REAL_TENANTS from "../tenants.json" with { type: "json" };
 
-const ISSUER = "https://token.actions.githubusercontent.com";
-const RSA = { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" };
-const key = await crypto.subtle.generateKey(RSA, true, ["sign", "verify"]);
-const jwk = { ...(await crypto.subtle.exportKey("jwk", key.publicKey)), kid: "k1", use: "sig" };
-const b64url = (bytes) => Buffer.from(bytes).toString("base64url");
+import { JWKS, publicJwk, token } from "./oidc.js";
 
-async function token(repository, ref = "refs/heads/main") {
-  const now = Math.floor(Date.now() / 1000);
-  const h = b64url(JSON.stringify({ alg: "RS256", typ: "JWT", kid: "k1" }));
-  const p = b64url(JSON.stringify({ iss: ISSUER, aud: AUDIENCE, repository, ref, iat: now, nbf: now - 5, exp: now + 300 }));
-  const s = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key.privateKey, new TextEncoder().encode(`${h}.${p}`));
-  return `${h}.${p}.${b64url(new Uint8Array(s))}`;
-}
-
+// A bucket that lists two objects a page, so the index reads every page.
 function bucket() {
   const objects = new Map();
-  return {
-    objects,
-    async put(k, bytes, options) {
-      objects.set(k, { key: k, bytes, customMetadata: options?.customMetadata || {}, httpEtag: '"e"', uploaded: new Date(0) });
-    },
-    async get(k) {
-      const o = objects.get(k);
-      return o && { ...o, body: o.bytes };
-    },
-    // Two objects a page, so the index reads every page.
-    async list({ prefix, cursor }) {
-      const all = [...objects.values()].filter((o) => o.key.startsWith(prefix));
-      const at = Number(cursor || 0);
-      return { objects: all.slice(at, at + 2), truncated: at + 2 < all.length, cursor: String(at + 2) };
-    },
+  const put = async (k, bytes, options) => objects.set(k, { key: k, bytes, customMetadata: options?.customMetadata || {}, httpEtag: '"e"' });
+  const get = async (k) => objects.get(k) && { ...objects.get(k), body: objects.get(k).bytes };
+  const list = async ({ prefix, cursor = "0" }) => {
+    const all = [...objects.values()].filter((o) => o.key.startsWith(prefix));
+    const at = Number(cursor);
+    return { objects: all.slice(at, at + 2), truncated: at + 2 < all.length, cursor: String(at + 2) };
   };
+  return { objects, put, get, list };
 }
 
 const TENANTS = { terraform: REAL_TENANTS.terraform, wheels: REAL_TENANTS.wheels };
@@ -60,7 +41,7 @@ beforeEach(() => {
   forgetKeys();
   realFetch = globalThis.fetch;
   globalThis.fetch = async (url) => {
-    if (String(url) === `${ISSUER}/.well-known/jwks`) return Response.json({ keys: [jwk] });
+    if (String(url) === JWKS) return Response.json({ keys: [publicJwk] });
     throw new Error(`unexpected fetch ${url}`);
   };
 });
