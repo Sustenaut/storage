@@ -82,11 +82,12 @@ const get = (path, bearer, method = "GET") =>
 const BP_MAIN = () => token("Sustenaut/business-plan");
 const PUB_SITE = (ref) => token("Sustenaut/pub-site", ref);
 
-test("the publications tenant is private: business-plan's main writes it, pub-site reads it, kept", () => {
+test("the publications tenant is private: business-plan's main writes it, pub-site, estimate and the review pod read it, kept", () => {
   const t = REAL_TENANTS.publications;
   assert.equal(t.private, true);
   assert.deepEqual(t.write, ["github:Sustenaut/business-plan@refs/heads/main"]);
-  assert.deepEqual(t.read, ["github:Sustenaut/pub-site", "github:Sustenaut/estimate"]);
+  assert.deepEqual(t.read, ["github:Sustenaut/pub-site", "github:Sustenaut/estimate", "k8s:review/app"]);
+  assert.equal(t.heads, true, "the review pod finds the publication it shows through a head");
   assert.deepEqual(t.files.types, ["gz"]);
   assert.equal(t.files.kept, true);
   assert.equal(t.in_use, undefined);

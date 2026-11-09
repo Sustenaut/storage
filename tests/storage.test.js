@@ -391,12 +391,13 @@ test("the facts tenant is private: business-plan's editors upload, its main read
   assert.equal(t.public_types, undefined);
 });
 
-test("the sources tenant is private: business-plan's main reads it, its editors still upload, kept and never cleaned", () => {
+test("the sources tenant is private: business-plan's main and the review pod read it, its editors still upload and move its heads, kept and never cleaned", () => {
   const t = REAL_TENANTS.sources;
   assert.equal(t.private, true);
   assert.equal(t.editors, true);
   assert.deepEqual(t.public_types, ["pdf"], "only the raw papers are public");
-  assert.deepEqual(t.read, ["github:Sustenaut/business-plan@refs/heads/main"]);
+  assert.deepEqual(t.read, ["github:Sustenaut/business-plan@refs/heads/main", "k8s:review/app"]);
+  assert.equal(t.heads, true, "the review pod finds the gathered index through a head");
   assert.equal(t.repository, "Sustenaut/business-plan");
   assert.equal(t.in_use, undefined);
   assert.deepEqual(t.files, { types: ["pdf", "cbor", "json"], max_bytes: 26214400, kept: true });

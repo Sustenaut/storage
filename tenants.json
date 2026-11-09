@@ -41,7 +41,8 @@
       "pdf"
     ],
     "read": [
-      "github:Sustenaut/business-plan@refs/heads/main"
+      "github:Sustenaut/business-plan@refs/heads/main",
+      "k8s:review/app"
     ],
     "repository": "Sustenaut/business-plan",
     "origins": [],
@@ -53,7 +54,8 @@
       ],
       "max_bytes": 26214400,
       "kept": true
-    }
+    },
+    "heads": true
   },
   "facts": {
     "private": true,
@@ -76,7 +78,8 @@
     "repository": "Sustenaut/business-plan",
     "read": [
       "github:Sustenaut/pub-site",
-      "github:Sustenaut/estimate"
+      "github:Sustenaut/estimate",
+      "k8s:review/app"
     ],
     "write": [
       "github:Sustenaut/business-plan@refs/heads/main"
@@ -87,7 +90,8 @@
       ],
       "max_bytes": 104857600,
       "kept": true
-    }
+    },
+    "heads": true
   },
   "pdc": {
     "write": [
