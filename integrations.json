@@ -24,6 +24,8 @@
     {
       "plugin": "github.actions-oidc",
       "paths": [
+        ".github/workflows/mirror.yml",
+        "mirror/wheels.sh",
         "src/jwt.js"
       ],
       "mode": "required"
@@ -31,6 +33,8 @@
     {
       "plugin": "github.repo-ops",
       "paths": [
+        ".github/workflows/mirror.yml",
+        "mirror/wheels.sh",
         "src/storage.js"
       ],
       "mode": "required"
