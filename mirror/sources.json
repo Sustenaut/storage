@@ -7,17 +7,6 @@
   "terraform": {
     "platforms": [
       "linux_amd64"
-    ],
-    "providers": {
-      "registry.terraform.io/breml/uptimekuma": "0.4.0",
-      "registry.terraform.io/cloudflare/cloudflare": "5.28.1",
-      "registry.terraform.io/hashicorp/google": "7.46.1",
-      "registry.terraform.io/hashicorp/random": "3.9.1",
-      "registry.terraform.io/hashicorp/time": "0.14.2",
-      "registry.terraform.io/hashicorp/tls": "4.4.1",
-      "registry.terraform.io/hetznercloud/hcloud": "1.69.0",
-      "registry.terraform.io/tailscale/tailscale": "0.29.2",
-      "registry.terraform.io/valodim/desec": "0.6.1"
-    }
+    ]
   }
 }

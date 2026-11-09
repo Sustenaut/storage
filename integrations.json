@@ -33,6 +33,7 @@
       "plugin": "github.actions-oidc",
       "paths": [
         ".github/workflows/mirror.yml",
+        "mirror/pypi.sh",
         "mirror/terraform.sh",
         "mirror/wheels.sh",
         "src/jwt.js"
@@ -40,10 +41,21 @@
       "mode": "required"
     },
     {
+      "plugin": "github.app-token",
+      "paths": [
+        ".github/workflows/mirror.yml",
+        "pubkit.json",
+        "scripts/go-live-mirror-app.sh"
+      ],
+      "mode": "required"
+    },
+    {
       "plugin": "github.repo-ops",
       "paths": [
         ".github/workflows/mirror.yml",
+        "mirror/locks.sh",
         "mirror/wheels.sh",
+        "scripts/go-live-mirror-app.sh",
         "src/storage.js"
       ],
       "mode": "required"
@@ -54,6 +66,13 @@
         "src/jwt.js"
       ],
       "mode": "advisory"
+    },
+    {
+      "plugin": "pypi.publish",
+      "paths": [
+        "mirror/pypi.sh"
+      ],
+      "mode": "required"
     },
     {
       "plugin": "sonarcloud.scan",

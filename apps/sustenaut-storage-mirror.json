@@ -1,0 +1,15 @@
+{
+  "name": "sustenaut-storage-mirror",
+  "url": "https://storage.sustenaut.eu",
+  "description": "Reads the lock files of Sustenaut's repositories, so storage.sustenaut.eu keeps a copy of what they pin. It can only read.",
+  "public": false,
+  "default_permissions": {
+    "contents": "read",
+    "metadata": "read"
+  },
+  "pubkit": {
+    "org": "Sustenaut",
+    "bitwarden_project": "Sustenaut",
+    "secret_prefix": "sustenaut-storage-mirror"
+  }
+}

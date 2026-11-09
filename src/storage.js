@@ -33,6 +33,9 @@
 //                                            ({index} is index.json or
 //                                            <version>.json), for tenants with
 //                                            "providers"
+//   GET,HEAD /{tenant}/simple/{project}/     a Python package's files, as a
+//                                            simple repository index (PEP 503),
+//                                            for tenants with "simple"
 //   POST /_clean                             the nightly clean-up
 //
 // An upload is the sizes the editor made in the browser (multipart fields
@@ -124,6 +127,10 @@ const PROVIDER_INDEX = /^\/([a-z0-9-]+)\/((?:[a-z0-9-]+\.)+[a-z]{2,})\/([a-z0-9-
 const PROVIDER_SUBJECT = /^((?:[a-z0-9-]+\.)+[a-z]{2,})\/([a-z0-9-]{1,64})\/([a-z0-9-]{1,64})$/;
 const PROVIDER_ARCHIVE = /^terraform-provider-([a-z0-9-]{1,64})_(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]{1,32})?)_([a-z0-9]{1,16})_([a-z0-9]{1,16})\.zip$/;
 const PROVIDER_INDEX_SECONDS = 300;
+// A simple repository index (PEP 503) of a tenant with "simple": GET /<tenant>/simple/<project>/.
+const SIMPLE = /^\/([a-z0-9-]+)\/simple\/([A-Za-z0-9._-]{1,100})\/$/;
+const PROJECT = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const normalize = (name) => name.toLowerCase().replace(/[-_.]+/g, "-");
 const TIMEOUT_MS = 10_000;
 const ALLOWED_FOR_MS = 60e3;
 const ALLOWED_MAX = 1000;
@@ -218,6 +225,10 @@ async function answer(request, env, tenants) {
       const route = url.pathname.match(PROVIDER_INDEX);
       if (route && route[1] === tenantId) return await providerIndex(request, env, url, route);
     }
+    if (tenant.simple && (request.method === "GET" || request.method === "HEAD")) {
+      const route = url.pathname.match(SIMPLE);
+      if (route && route[1] === tenantId) return await simpleIndex(request, env, url, route);
+    }
     if (request.method === "GET" || request.method === "HEAD") return await serve(url, env, request, tenant);
     if (request.method === "PUT") return await moveHead(request, env, url, tenant);
     if (request.method === "POST" && url.pathname === `/${tenantId}/upload`) return json(await upload(request, env, tenantId, tenant), 200, cors);
@@ -287,6 +298,34 @@ async function providerIndex(request, env, url, route) {
   if (asked === "index") return json({ versions: Object.fromEntries(Object.keys(versions).sort(byVersion).map((v) => [v, {}])) }, 200, headers);
   if (!versions[asked]) throw status(404, `${subject} ${asked} isn't mirrored here`);
   return json({ archives: versions[asked] }, 200, headers);
+}
+
+// A simple repository index (PEP 503) of one project, from the files a tenant
+// with "simple" keeps: each uploaded with the project's normalized name as its
+// subject. Each link carries the file's SHA-256, its id here, which is the hash
+// a lock pins, so pip checks what it gets. Short lived, as files come in.
+async function simpleIndex(request, env, url, route) {
+  const [, tenantId, asked] = route;
+  const project = normalize(asked);
+  const links = [];
+  let cursor;
+  do {
+    const page = await env.STORAGE.list({ prefix: `${tenantId}/f/`, cursor, include: ["customMetadata"] });
+    for (const o of page.objects) {
+      if (o.customMetadata?.subject !== project) continue;
+      const [, , id, name] = o.key.split("/");
+      links.push([name, `${url.origin}/${o.key}#sha256=${id}`]);
+    }
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  if (!links.length) throw status(404, `${project} isn't mirrored here`);
+  links.sort(([a], [b]) => a.localeCompare(b));
+  const body = `<!DOCTYPE html>\n<html><head><meta name="pypi:repository-version" content="1.0"><title>Links for ${project}</title></head><body>\n`
+    + links.map(([name, href]) => `<a href="${href}">${name}</a><br>\n`).join("")
+    + "</body></html>\n";
+  return new Response(request.method === "HEAD" ? null : body, {
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": `public, max-age=${PROVIDER_INDEX_SECONDS}`, "Access-Control-Allow-Origin": "*" },
+  });
 }
 
 // Versions in release order: 9.0.0 before 10.0.0, and a prerelease before its release.
@@ -508,6 +547,7 @@ export async function uploadFile(request, env, tenantId, tenant) {
   if (bytes.length > max) throw status(413, `${name} is over ${max} bytes`);
   if (!kind.check(bytes)) throw status(400, `${name} is not a .${ext} file`);
   if (tenant.providers) providerUpload(name, String(form.get("subject") || "").trim());
+  if (tenant.simple) packageUpload(name, String(form.get("subject") || "").trim());
   const label = String(form.get("label") || "").trim().slice(0, LABEL_CHARS);
   // What the file is about, such as a card, so a listing can find a subject's files.
   const subject = String(form.get("subject") || "").trim().slice(0, LABEL_CHARS);
@@ -534,6 +574,14 @@ function providerUpload(name, subject) {
   const address = subject.match(PROVIDER_SUBJECT);
   if (!address) throw status(400, "the subject is the provider's address, <hostname>/<namespace>/<type>");
   if (address[3] !== archive[1]) throw status(400, `${name} is not an archive of ${subject}`);
+}
+
+// A package's file is kept under its project's normalized name, which starts its name.
+function packageUpload(name, subject) {
+  if (!PROJECT.test(subject)) throw status(400, "the subject is the project's normalized name (PEP 503)");
+  // The name, then its version, which starts with a digit: pytest_bdd-8.1.0 is pytest-bdd's, not pytest's.
+  const rest = normalize(name).startsWith(`${subject}-`) && normalize(name).slice(subject.length + 1);
+  if (!rest || !/^\d/.test(rest)) throw status(400, `${name} is not a file of ${subject}`);
 }
 
 // Who may write to the tenant: an OpenID Connect token's principal in its
