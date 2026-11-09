@@ -292,7 +292,7 @@ an hour ago may not be copied yet; run the workflow by hand to copy it now.
 may read, and the next two copy what they pin. With the
 `sustenaut-storage-mirror` GitHub App (`apps/sustenaut-storage-mirror.json`,
 contents: read; its id and key are `MIRROR_APP_ID` and `MIRROR_APP_KEY`
-here, sent by `./with-secrets ./pubkit app-secrets`), those are the
+here, sent by `./with-secrets ./pubsec app-secrets`), those are the
 repositories its installation reaches, the private ones included. Without
 it, they are the owners' public repositories. `scripts/go-live-mirror-app.sh`
 makes the app and sets it up.

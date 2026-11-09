@@ -26,27 +26,27 @@ ask() {
 }
 has_variable() { gh variable list -R "$repo" --json name --jq '.[].name' | grep -qx "$1"; }
 
-step "1. The app, its key in Bitwarden (./pubkit github-app create)"
+step "1. The app, its key in Bitwarden (./pubsec github-app create)"
 # Made once: GitHub lists the app's installation on the owner (github-app
 # create refuses to make it again anyway, once its values are in Bitwarden).
 if gh api orgs/Sustenaut/installations --jq '.installations[].app_slug' | grep -qx sustenaut-storage-mirror; then
   skip "the app is installed on Sustenaut"
 else
-  ./pubkit github-app create --dry-run "$manifest"
+  ./pubsec github-app create --dry-run "$manifest"
   echo "   It opens GitHub in your browser to make the app, then its install page."
   echo "   Install it on all of Sustenaut's repositories: it can only read their contents."
   ask "Make the app?"
-  ./pubkit github-app create "$manifest"
+  ./pubsec github-app create "$manifest"
 fi
 
-step "2. Its id, installation id and key on $repo (./pubkit app-secrets)"
+step "2. Its id, installation id and key on $repo (./pubsec app-secrets)"
 if has_variable MIRROR_APP_ID && has_variable MIRROR_APP_INSTALLATION_ID \
   && gh secret list -R "$repo" --json name --jq '.[].name' | grep -qx MIRROR_APP_KEY; then
   skip "MIRROR_APP_ID, MIRROR_APP_INSTALLATION_ID and MIRROR_APP_KEY are set"
 else
-  ./with-secrets ./pubkit app-secrets --check
+  ./with-secrets ./pubsec app-secrets --check
   ask "Send them to $repo?"
-  ./with-secrets ./pubkit app-secrets
+  ./with-secrets ./pubsec app-secrets
 fi
 
 step "3. A mirror run that reads every lock the app reaches"
