@@ -4,7 +4,8 @@
 # repositories, and gives this repository its id and key. Run it once, from
 # this repository's root on an up-to-date main, signed in to gh as an owner
 # of Sustenaut, with a Bitwarden access token that can write the Sustenaut
-# project at hand:
+# project at hand, and ./with-secrets' read token (BWS_ACCESS_TOKEN, or the
+# line in .env) for step 2:
 #
 #   scripts/go-live-mirror-app.sh
 #
@@ -26,8 +27,10 @@ ask() {
 has_variable() { gh variable list -R "$repo" --json name --jq '.[].name' | grep -qx "$1"; }
 
 step "1. The app, its key in Bitwarden (./pubkit github-app create)"
-if ./with-secrets ./pubkit app-secrets --check >/dev/null 2>&1 || has_variable MIRROR_APP_ID; then
-  skip "the app's values are in Bitwarden"
+# Made once: GitHub lists the app's installation on the owner (github-app
+# create refuses to make it again anyway, once its values are in Bitwarden).
+if gh api orgs/Sustenaut/installations --jq '.installations[].app_slug' | grep -qx sustenaut-storage-mirror; then
+  skip "the app is installed on Sustenaut"
 else
   ./pubkit github-app create --dry-run "$manifest"
   echo "   It opens GitHub in your browser to make the app, then its install page."
