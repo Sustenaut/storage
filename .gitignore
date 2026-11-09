@@ -8,3 +8,6 @@ data/
 __pycache__/
 .pytest_cache/
 .wrangler/
+
+# Local secrets, such as the Bitwarden token ./with-secrets reads: never committed.
+.env
