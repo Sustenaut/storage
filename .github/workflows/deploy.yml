@@ -29,11 +29,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: npm ci --ignore-scripts
       - run: npm test
-      # wrangler pages deploy, run from the repository's root, takes
-      # functions/ and wrangler.toml from there.
+      # The site check deploy-static runs before a deploy, then the
+      # wrangler package-lock.json pins (npm run deploy), not the one
+      # deploy-static brings. wrangler pages deploy, run from the
+      # repository's root, takes functions/ and wrangler.toml from there.
       - uses: Sustenaut/pubkit/actions/deploy-static@d634bd9ba97c6933561e9e7d1ceff5b975e8f22e # v0.28.0
         with:
           dir: public
-          cloudflare-api-token: ${{ secrets.CLOUDFLARE_GITHUB_API_TOKEN }}
-          cloudflare-account-id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          cloudflare-project: sustenaut-storage
+          check-only: 'true'
+      - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_GITHUB_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: npm run deploy -- --commit-hash "$GITHUB_SHA"

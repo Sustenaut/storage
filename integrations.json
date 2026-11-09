@@ -8,9 +8,17 @@
       "mode": "required"
     },
     {
-      "plugin": "cloudflare.pages",
+      "plugin": "cloudflare.dns",
       "paths": [
         ".github/workflows/deploy.yml"
+      ],
+      "mode": "required"
+    },
+    {
+      "plugin": "cloudflare.pages",
+      "paths": [
+        ".github/workflows/deploy.yml",
+        "package.json"
       ],
       "mode": "required"
     },
