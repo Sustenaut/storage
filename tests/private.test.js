@@ -5,25 +5,7 @@ import assert from "node:assert/strict";
 import { handle, clean } from "../src/storage.js";
 import { verify, allowed, isJwt, forgetKeys, AUDIENCE } from "../src/jwt.js";
 import REAL_TENANTS from "../tenants.json" with { type: "json" };
-
-const ISSUER = "https://token.actions.githubusercontent.com";
-const JWKS = `${ISSUER}/.well-known/jwks`;
-const RSA = { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" };
-const issuerKey = await crypto.subtle.generateKey(RSA, true, ["sign", "verify"]);
-const otherKey = await crypto.subtle.generateKey(RSA, true, ["sign", "verify"]);
-const publicJwk = { ...(await crypto.subtle.exportKey("jwk", issuerKey.publicKey)), kid: "k1", use: "sig" };
-
-const b64url = (bytes) => Buffer.from(bytes).toString("base64url");
-const now = () => Math.floor(Date.now() / 1000);
-
-// A GitHub Actions token for a repository and ref, with any claim overridden.
-async function token(repository, ref = "refs/heads/main", { claims = {}, header = {}, key = issuerKey.privateKey } = {}) {
-  const h = b64url(JSON.stringify({ alg: "RS256", typ: "JWT", kid: "k1", ...header }));
-  const body = { iss: ISSUER, aud: AUDIENCE, repository, ref, iat: now(), nbf: now() - 5, exp: now() + 300, ...claims };
-  const p = b64url(JSON.stringify(body));
-  const s = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(`${h}.${p}`));
-  return `${h}.${p}.${b64url(new Uint8Array(s))}`;
-}
+import { ISSUER, JWKS, RSA, issuerKey, otherKey, publicJwk, b64url, now, token } from "./oidc.js";
 
 function bucket() {
   const objects = new Map();
