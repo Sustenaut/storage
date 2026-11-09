@@ -13,7 +13,7 @@ jobs:
   checks:
     name: ci
     uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@d634bd9ba97c6933561e9e7d1ceff5b975e8f22e # v0.28.0
-    with: {"shellcheck": "with-secrets mirror/*.sh"}
+    with: {"shellcheck": "with-secrets mirror/*.sh scripts/*.sh"}
 
   tests:
     name: ci

@@ -1,5 +1,6 @@
-// Terraform's provider network mirror (src/storage.js, providerIndex), from the
-// archives a tenant with "providers" keeps, with GitHub's OIDC issuer answered here.
+// The mirrors' indexes (src/storage.js): Terraform's provider network mirror, from the
+// archives a tenant with "providers" keeps, and a simple repository index (PEP 503) of
+// a tenant with "simple", with GitHub's OIDC issuer answered here.
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { handle, byVersion } from "../src/storage.js";
@@ -21,17 +22,17 @@ function bucket() {
   return { objects, put, get, list };
 }
 
-const TENANTS = { terraform: REAL_TENANTS.terraform, wheels: REAL_TENANTS.wheels };
+const TENANTS = { terraform: REAL_TENANTS.terraform, wheels: REAL_TENANTS.wheels, pypi: REAL_TENANTS.pypi };
 const ORIGIN = "https://storage.example";
 const call = (request) => handle(request, env, TENANTS);
 const zip = (n) => new Uint8Array([0x50, 0x4b, 0x03, 0x04, n]);
 const sha = async (bytes) => Buffer.from(await crypto.subtle.digest("SHA-256", bytes)).toString("hex");
 
-async function put(name, subject, bytes = zip(1), bearer) {
+async function put(name, subject, bytes = zip(1), bearer, tenant = "terraform") {
   const form = new FormData();
   form.append("file", new Blob([bytes]), name);
   if (subject !== undefined) form.append("subject", subject);
-  return call(new Request(`${ORIGIN}/terraform/files`, { method: "POST", body: form, headers: { Authorization: `Bearer ${bearer || (await token("Sustenaut/storage"))}` } }));
+  return call(new Request(`${ORIGIN}/${tenant}/files`, { method: "POST", body: form, headers: { Authorization: `Bearer ${bearer || (await token("Sustenaut/storage"))}` } }));
 }
 const get = (path, method = "GET") => call(new Request(`${ORIGIN}${path}`, { method }));
 
@@ -113,4 +114,46 @@ test("versions are listed in release order, not as text", async () => {
     assert.equal((await put(name, "registry.terraform.io/hashicorp/tls", zip(n))).status, 200);
   const { versions } = await (await get("/terraform/registry.terraform.io/hashicorp/tls/index.json")).json();
   assert.deepEqual(Object.keys(versions), ["9.0.0", "10.0.0"]);
+});
+
+test("the pypi tenant is public, kept, never cleaned, serves a simple index, and only storage's own main writes it", () => {
+  const t = REAL_TENANTS.pypi;
+  assert.equal(t.private, undefined);
+  assert.equal(t.repository, undefined);
+  assert.equal(t.simple, true);
+  assert.deepEqual(t.write, ["github:Sustenaut/storage@refs/heads/main"]);
+  assert.deepEqual(t.files, { types: ["whl", "gz", "zip"], max_bytes: 104857600, kept: true });
+  assert.equal(t.in_use, undefined);
+});
+
+test("a project's simple index links each of its files, with the sha256 a lock pins", async () => {
+  const pkg = (name, subject, n) => put(name, subject, n === undefined ? zip(9) : zip(n), undefined, "pypi");
+  assert.equal((await pkg("PyYAML-6.0.3-cp314-cp314-manylinux_2_17_x86_64.whl", "pyyaml", 1)).status, 200);
+  assert.equal((await pkg("pyyaml-6.0.3.tar.gz", "pyyaml", 2)).status, 400, "a .gz must be gzip");
+  const gz = new Uint8Array([0x1f, 0x8b, 8, 0]);
+  assert.equal((await put("pyyaml-6.0.3.tar.gz", "pyyaml", gz, undefined, "pypi")).status, 200);
+  assert.equal((await pkg("pytest_bdd-8.1.0-py3-none-any.whl", "pytest-bdd", 3)).status, 200);
+
+  const page = await get("/pypi/simple/PyYAML/");
+  assert.equal(page.status, 200);
+  assert.match(page.headers.get("Content-Type"), /^text\/html/);
+  const html = await page.text();
+  const wheel = await sha(zip(1));
+  const sdist = await sha(gz);
+  assert.ok(html.includes(`<a href="${ORIGIN}/pypi/f/${wheel}/PyYAML-6.0.3-cp314-cp314-manylinux_2_17_x86_64.whl#sha256=${wheel}">`), html);
+  assert.ok(html.includes(`#sha256=${sdist}">pyyaml-6.0.3.tar.gz</a>`), html);
+  assert.ok(!html.includes("pytest_bdd"), "another project's file isn't listed");
+  assert.ok((await (await get("/pypi/simple/pytest_bdd/")).text()).includes("pytest_bdd-8.1.0-py3-none-any.whl"), "a name is normalized");
+  assert.equal((await get("/pypi/simple/nothing/")).status, 404);
+  assert.equal((await get("/pypi/simple/pyyaml/", "HEAD")).status, 200);
+  assert.equal((await get("/terraform/simple/pyyaml/")).status, 404, "only a tenant with simple has an index");
+});
+
+test("a package's file is taken only under its project's normalized name", async () => {
+  const pkg = (name, subject) => put(name, subject, zip(1), undefined, "pypi");
+  assert.equal((await pkg("pytest-9.0.3-py3-none-any.whl", undefined)).status, 400, "no subject");
+  assert.equal((await pkg("pytest-9.0.3-py3-none-any.whl", "PyTest")).status, 400, "not normalized");
+  assert.equal((await pkg("pytest-9.0.3-py3-none-any.whl", "pyyaml")).status, 400, "another project");
+  assert.equal((await pkg("pytest_bdd-8.1.0-py3-none-any.whl", "pytest")).status, 400, "a name is matched whole");
+  assert.equal(env.STORAGE.objects.size, 0);
 });

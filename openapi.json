@@ -1161,6 +1161,60 @@
         }
       }
     },
+    "/{tenant}/simple/{project}/": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/tenant"
+        },
+        {
+          "$ref": "#/components/parameters/project"
+        }
+      ],
+      "get": {
+        "operationId": "getSimpleIndex",
+        "summary": "A Python package's mirrored files, as a simple repository index (PEP 503), for a tenant with simple",
+        "security": [
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "The project's files, as links carrying each one's sha256",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      },
+      "head": {
+        "operationId": "headSimpleIndex",
+        "summary": "The same, without the body",
+        "security": [
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "The project's files, as links carrying each one's sha256",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      }
+    },
     "/_clean": {
       "post": {
         "operationId": "clean",
@@ -1325,6 +1379,16 @@
         },
         "example": "index.json",
         "description": "index.json for the versions, <version>.json for one version's archives"
+      },
+      "project": {
+        "name": "project",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "example": "pytest",
+        "description": "The project's name, normalized or not (PEP 503)"
       }
     },
     "responses": {

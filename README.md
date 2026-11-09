@@ -107,6 +107,7 @@ without `kept` doesn't unkeep it.
 | `notifier` (private) | Sustenaut/notifier's state: which signals it has posted | small json files, written and read by the notifier's pod alone (`k8s:notifier/app`); a `posted` head names the latest, moved with `If-Match` so two runs can't both win. It writes a new file only when it has posted something. |
 | `facts` (private) | Sustenaut/business-plan's facts registry | its signed publet objects (cbor), all kept; uploaded by its editors from their own machines and read by business-plan's main |
 | `sources` (private, its pdfs public) | Sustenaut/business-plan's sources corpus | papers (pdf) whose licence allows it, which come from elsewhere and stay public at the addresses signed records name; signed publet objects (cbor, named by their SHA-256 like any file) and their indexes (json); all kept, never cleaned; read by business-plan's main (the review site's image build) |
+| `pypi` | the PyPI files the requirements locks pin, copied by the mirror workflow, served as a simple repository index (see The mirror below) | whl, gz and zip files, public, all kept, never cleaned; written by Sustenaut/storage's main alone |
 | `terraform` | the Terraform providers CI uses, copied from their registries by the mirror workflow, served by Terraform's network mirror protocol (see The mirror below) | zip files, public, all kept, never cleaned; written by Sustenaut/storage's main alone |
 | `wheels` | the wheels of Sustenaut's public releases, copied from GitHub by this repository's own mirror workflow (see The mirror below) | whl files, public, all kept, never cleaned; written by Sustenaut/storage's main alone |
 
@@ -286,13 +287,35 @@ package's release changes and no secret is kept. A wheel released less than
 an hour ago may not be copied yet; run the workflow by hand to copy it now.
 `DRY_RUN=1 mirror/wheels.sh` lists what a run would copy.
 
-**Terraform providers.** `mirror/terraform.sh` copies the providers
-`mirror/sources.json` names into the `terraform` tenant, each from the
-version given there on, for each platform listed (CI's `linux_amd64`). The
-modules' locks are mostly in private repositories this workflow can't read,
-so the versions come from the registry: every release since the one given,
-which the nightly only ever moves past. Raise a provider's version once no
-lock pins anything older, and add a provider before a module uses it.
+**The locks.** `mirror/locks.sh` fetches every `.terraform.lock.hcl` and
+`requirements*.lock` at the default branch of the repositories the mirror
+may read, and the next two copy what they pin. With the
+`sustenaut-storage-mirror` GitHub App (`apps/sustenaut-storage-mirror.json`,
+contents: read; its id and key are `MIRROR_APP_ID` and `MIRROR_APP_KEY`
+here, sent by `./with-secrets ./pubkit app-secrets`), those are the
+repositories its installation reaches, the private ones included. Without
+it, they are the owners' public repositories. `scripts/go-live-mirror-app.sh`
+makes the app and sets it up.
+
+**Terraform providers.** `mirror/terraform.sh` copies each provider and
+version the locks pin into the `terraform` tenant, for each platform
+`mirror/sources.json` lists (CI's `linux_amd64`).
+
+**PyPI packages.** `mirror/pypi.sh` copies the files the requirements locks
+pin by name and version into the `pypi` tenant. A lock pins every
+platform's wheel, so only the ones CI and our machines install are copied:
+pure wheels, CPython 3.12 to 3.14 (or abi3) on manylinux x86_64, or the
+sdist of a pin with none of those. A tenant with `"simple": true` serves a
+[simple repository index](https://peps.python.org/pep-0503/) of its files
+at `/<tenant>/simple/<project>/`, each link carrying its SHA-256, so pip
+can install from it:
+
+```sh
+pip install --require-hashes --index-url https://storage.sustenaut.eu/pypi/simple/ -r tests/requirements.lock
+```
+
+A file is uploaded with its project's normalized name (PEP 503) as its
+`subject`, and its name must start with that name and a version.
 
 A tenant with `"providers": true` serves Terraform's
 [provider network mirror protocol](https://developer.hashicorp.com/terraform/internals/provider-network-mirror-protocol)

@@ -314,5 +314,20 @@
       "max_bytes": 104857600,
       "kept": true
     }
+  },
+  "pypi": {
+    "write": [
+      "github:Sustenaut/storage@refs/heads/main"
+    ],
+    "simple": true,
+    "files": {
+      "types": [
+        "whl",
+        "gz",
+        "zip"
+      ],
+      "max_bytes": 104857600,
+      "kept": true
+    }
   }
 }

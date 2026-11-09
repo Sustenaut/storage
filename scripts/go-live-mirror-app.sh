@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Makes the sustenaut-storage-mirror GitHub App (apps/sustenaut-storage-mirror.json),
+# which lets the mirror workflow read the lock files of Sustenaut's private
+# repositories, and gives this repository its id and key. Run it once, from
+# this repository's root on an up-to-date main, signed in to gh as an owner
+# of Sustenaut, with a Bitwarden access token that can write the Sustenaut
+# project at hand:
+#
+#   scripts/go-live-mirror-app.sh
+#
+# Each step says what it does and asks first; a step already done is
+# skipped, and the first error stops it. It prints no secret.
+set -euo pipefail
+root="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+cd "$root"
+repo=Sustenaut/storage
+manifest=apps/sustenaut-storage-mirror.json
+
+step() { printf '\n== %s\n' "$*"; }
+skip() { echo "   already done: $*"; }
+ask() {
+  local answer
+  read -r -p "   $1 [y/N] " answer </dev/tty
+  [[ $answer =~ ^[Yy] ]] || { echo "Stopped; run scripts/go-live-mirror-app.sh again to go on."; exit 1; }
+}
+has_variable() { gh variable list -R "$repo" --json name --jq '.[].name' | grep -qx "$1"; }
+
+step "1. The app, its key in Bitwarden (./pubkit github-app create)"
+if ./with-secrets ./pubkit app-secrets --check >/dev/null 2>&1 || has_variable MIRROR_APP_ID; then
+  skip "the app's values are in Bitwarden"
+else
+  ./pubkit github-app create --dry-run "$manifest"
+  echo "   It opens GitHub in your browser to make the app, then its install page."
+  echo "   Install it on all of Sustenaut's repositories: it can only read their contents."
+  ask "Make the app?"
+  ./pubkit github-app create "$manifest"
+fi
+
+step "2. Its id, installation id and key on $repo (./pubkit app-secrets)"
+if has_variable MIRROR_APP_ID && has_variable MIRROR_APP_INSTALLATION_ID \
+  && gh secret list -R "$repo" --json name --jq '.[].name' | grep -qx MIRROR_APP_KEY; then
+  skip "MIRROR_APP_ID, MIRROR_APP_INSTALLATION_ID and MIRROR_APP_KEY are set"
+else
+  ./with-secrets ./pubkit app-secrets --check
+  ask "Send them to $repo?"
+  ./with-secrets ./pubkit app-secrets
+fi
+
+step "3. A mirror run that reads every lock the app reaches"
+ask "Run the mirror workflow now?"
+gh workflow run mirror.yml -R "$repo" --ref main
+echo "   Started: gh run list -R $repo --workflow mirror.yml --limit 1"
+echo "   Its locks job says how many lock files and repositories it read."
