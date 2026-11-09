@@ -3,7 +3,7 @@
     {
       "plugin": "bitwarden.secrets",
       "paths": [
-        "with-secrets"
+        "with-secrets.json"
       ],
       "mode": "required"
     },
@@ -32,6 +32,9 @@
     {
       "plugin": "github.actions-oidc",
       "paths": [
+        ".github/workflows/mirror.yml",
+        "mirror/terraform.sh",
+        "mirror/wheels.sh",
         "src/jwt.js"
       ],
       "mode": "required"
@@ -39,7 +42,24 @@
     {
       "plugin": "github.repo-ops",
       "paths": [
+        ".github/workflows/mirror.yml",
+        "mirror/wheels.sh",
         "src/storage.js"
+      ],
+      "mode": "required"
+    },
+    {
+      "plugin": "google.cloud",
+      "paths": [
+        "src/jwt.js"
+      ],
+      "mode": "advisory"
+    },
+    {
+      "plugin": "sonarcloud.scan",
+      "paths": [
+        ".github/workflows/main.yml",
+        ".github/workflows/pr.yml"
       ],
       "mode": "required"
     }

@@ -10,6 +10,11 @@
 //   k8s:<namespace>/<account>     a pod on the Sustenaut k3s server, from
 //                                 its projected service-account token
 //                                 (audience storage.sustenaut.eu)
+//   gcp:<account email>           a Google service account, such as a Cloud
+//                                 Run service's, from an identity token its
+//                                 metadata server gives (audience
+//                                 storage.sustenaut.eu, format=full, so the
+//                                 token says its verified email)
 //   auth:<client>                 a client of auth.sustenaut.eu (Keycloak),
 //                                 once its issuer is added here
 //
@@ -29,6 +34,7 @@ export const AUDIENCE = "storage.sustenaut.eu";
 const LEEWAY = 60;
 const KEYS_FOR_MS = 10 * 60e3; // a key set is fetched again after this
 const UNKNOWN_KID_EVERY_MS = 60e3; // and at most this often for a key it doesn't have
+const TIMEOUT_MS = 10_000; // an issuer that hasn't answered by then counts as unreadable
 
 export const ISSUERS = {
   "https://token.actions.githubusercontent.com": {
@@ -43,6 +49,14 @@ export const ISSUERS = {
       return ns && sa && c.sub === `system:serviceaccount:${ns}:${sa}` ? `k8s:${ns}/${sa}` : null;
     },
   },
+  // Google, which names its issuer both ways. Any Google service account can ask for a
+  // token for this audience, so a principal is only ever its own verified address, and
+  // the tenants' lists say which accounts are ours.
+  ...Object.fromEntries(["https://accounts.google.com", "accounts.google.com"].map((iss) => [iss, {
+    jwks: "https://www.googleapis.com/oauth2/v3/certs",
+    principal: (c) => (c.email_verified === true && /^[a-z0-9-]+@[a-z0-9-]+\.iam\.gserviceaccount\.com$/.test(c.email || "")
+      ? `gcp:${c.email}` : null),
+  }])),
   // auth.sustenaut.eu, when a client there asks for this audience:
   // "https://auth.sustenaut.eu/realms/sustenaut": {
   //   jwks: "https://auth.sustenaut.eu/realms/sustenaut/protocol/openid-connect/certs",
@@ -82,10 +96,12 @@ export async function verify(token, { issuers = ISSUERS, now = Date.now() } = {}
 
 // Whether a principal is among a tenant's: "github:<repo>" allows any ref of
 // that repository, "github:<repo>@<ref>" only that ref. Repositories are
-// compared without case, as GitHub does; refs exactly.
+// compared without case, as GitHub does; refs exactly. Every other principal
+// matches only itself: a Google account's address has an @ that is no ref.
 export function allowed(principal, list = []) {
   return list.some((entry) => {
     if (entry === principal) return true;
+    if (!entry.startsWith("github:") || !principal.startsWith("github:")) return false;
     const [name, ref] = split(entry);
     const [pName, pRef] = split(principal);
     return name.toLowerCase() === pName.toLowerCase() && (ref === undefined || ref === pRef);
@@ -122,7 +138,7 @@ async function pinnedKey(jwks, kid) {
 }
 
 async function fetchKeys(url, now, old) {
-  const response = await fetch(url).catch(() => null);
+  const response = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) }).catch(() => null);
   if (!response?.ok) {
     if (old) return { ...old, tried: now };
     throw unauthorized("the issuer's keys can't be read now");

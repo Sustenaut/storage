@@ -2,7 +2,8 @@
 // GitHub answered here.
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { handle, clean, jpegSize } from "../src/storage.js";
+import { handle, clean, jpegSize, allowedCache, callLog } from "../src/storage.js";
+import { POLICIES } from "@sustenaut/integrations/caller.js";
 import REAL_TENANTS from "../tenants.json" with { type: "json" };
 
 // A JPEG's first bytes, with a start-of-frame giving its size.
@@ -43,9 +44,13 @@ const TENANTS = {
 };
 const call = (request) => handle(request, env, TENANTS);
 
-let env, realFetch, sitePhotos, canPush, inUse, appRepos;
+let env, realFetch, sitePhotos, canPush, inUse, appRepos, clock, asked;
 beforeEach(() => {
   env = { STORAGE: bucket() };
+  clock = Date.parse("2026-11-01T00:00:00Z");
+  allowedCache.now = () => clock;
+  allowedCache.entries.clear();
+  asked = [];
   sitePhotos = [];
   canPush = true;
   inUse = { photos: [], files: [] };
@@ -53,6 +58,7 @@ beforeEach(() => {
   realFetch = globalThis.fetch;
   globalThis.fetch = async (url, options = {}) => {
     url = String(url);
+    asked.push(url);
     if (url === "https://api.github.com/repos/schryer/visit-ee") {
       if (options.headers.Authorization !== "Bearer good") return new Response("{}", { status: 401 });
       return Response.json({ permissions: { push: canPush } });
@@ -164,7 +170,7 @@ test("a file is stored under its content's SHA-256 and served with its type, for
   assert.match(file.id, /^[0-9a-f]{64}$/);
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", pdf()));
   assert.equal(file.id, [...digest].map((x) => x.toString(16).padStart(2, "0")).join(""));
-  assert.deepEqual({ ...file, id: "" }, { id: "", name: "market-report.pdf", url: `/opportunity/f/${file.id}/market-report.pdf`, type: "application/pdf", size: pdf().length, label: "OPP-02 market report v3", kept: false });
+  assert.deepEqual({ ...file, id: "" }, { id: "", name: "market-report.pdf", url: `/opportunity/f/${file.id}/market-report.pdf`, type: "application/pdf", size: pdf().length, label: "OPP-02 market report v3", subject: "", kept: false });
   const stored = env.STORAGE.objects.get(`opportunity/f/${file.id}/market-report.pdf`);
   assert.equal(stored.customMetadata.by, "schryer");
   assert.equal(stored.customMetadata.label, "OPP-02 market report v3");
@@ -219,6 +225,7 @@ test("a GitHub App installation token uploads when its installation can write to
 
   assert.equal((await sendFile("ghs_other", pdf(), { name: "a.pdf" })).status, 403);
   appRepos = [{ full_name: "Sustenaut/business-plan", permissions: { admin: false, push: false, pull: true } }];
+  clock += 60e3; // the app's earlier yes has expired
   assert.equal((await sendFile("ghs_app", pdf("2"), { name: "b.pdf" })).status, 403);
   appRepos = [{ full_name: "schryer/visit-ee", permissions: { admin: false, push: true, pull: true } }];
   assert.equal((await sendFile("ghs_app", pdf("3"), { name: "c.pdf" })).status, 403);
@@ -404,4 +411,160 @@ test("an avro file must start as Avro does", async () => {
   };
   assert.equal((await upload(new Uint8Array([0x4f, 0x62, 0x6a, 0x01, 0x00]))).status, 200);
   assert.equal((await upload(new Uint8Array([0x4f, 0x62, 0x6a, 0x02]))).status, 400);
+});
+
+const gitHubAsks = () => asked.filter((u) => u.startsWith("https://api.github.com/")).length;
+
+test("GitHub's yes is kept a minute, so more uploads with the same token don't ask again", async () => {
+  assert.equal((await upload("good", { "480.jpg": jpeg(480, 360) })).status, 200);
+  assert.equal(gitHubAsks(), 2, "the repository, then who the person is");
+  clock += 59e3;
+  assert.equal((await upload("good", { "480.jpg": jpeg(480, 361) })).status, 200);
+  assert.equal(gitHubAsks(), 2, "within the minute, GitHub isn't asked");
+  const meta = [...env.STORAGE.objects.values()].map((o) => o.customMetadata.by);
+  assert.deepEqual(meta, ["schryer", "schryer"], "the login comes from the cache too");
+  // The same token for another repository is asked about on its own.
+  assert.equal((await sendFile("good", pdf(), { name: "a.pdf" })).status, 200);
+  assert.equal(gitHubAsks(), 4);
+});
+
+test("a kept yes expires after a minute, and then a revoked permission is refused", async () => {
+  assert.equal((await upload("good", { "480.jpg": jpeg(480, 360) })).status, 200);
+  canPush = false;
+  clock += 60e3;
+  assert.equal((await upload("good", { "480.jpg": jpeg(480, 361) })).status, 403);
+  assert.equal(gitHubAsks(), 3);
+});
+
+test("a no, or an error, is never kept", async () => {
+  canPush = false;
+  assert.equal((await upload("good", { "480.jpg": jpeg(480, 360) })).status, 403);
+  canPush = true;
+  assert.equal((await upload("good", { "480.jpg": jpeg(480, 360) })).status, 200, "asked again at once");
+  assert.equal((await sendFile("ghs_other", pdf(), { name: "a.pdf" })).status, 403);
+  assert.equal((await sendFile("ghs_other", pdf(), { name: "a.pdf" })).status, 403);
+  assert.equal(asked.filter((u) => u.includes("/installation/")).length, 2);
+});
+
+test("the cache is keyed by a hash of the token and repository, never the token", async () => {
+  await upload("good", { "480.jpg": jpeg(480, 360) });
+  const [[key, value]] = [...allowedCache.entries];
+  assert.match(key, /^[0-9a-f]{64}$/);
+  assert.ok(!JSON.stringify([key, value]).includes("good"));
+  assert.deepEqual({ ...value, until: 0 }, { login: "schryer", app: false, until: 0 });
+});
+
+test("the cache holds at most a thousand yeses, dropping the oldest", async () => {
+  for (let i = 0; i < 1000; i++) allowedCache.entries.set(`k${i}`, { login: "x", app: false, until: clock + 60e3 });
+  await upload("good", { "480.jpg": jpeg(480, 360) });
+  assert.equal(allowedCache.entries.size, 1000);
+  assert.ok(!allowedCache.entries.has("k0"));
+});
+
+test("every call to GitHub has a timeout, and GitHub not answering is a 503, not a refusal", async () => {
+  const signals = [];
+  const answering = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => {
+    signals.push(options.signal);
+    if (String(url).startsWith("https://api.github.com/")) throw new DOMException("The operation timed out.", "TimeoutError");
+    return answering(url, options);
+  };
+  const response = await upload("good", { "480.jpg": jpeg(480, 360) });
+  assert.equal(response.status, 503);
+  assert.match((await response.json()).error, /didn't answer within 10 s/);
+  assert.equal((await sendFile("ghs_app", pdf(), { name: "a.pdf" })).status, 503);
+  assert.equal(allowedCache.entries.size, 0, "a timeout isn't kept");
+  assert.ok(signals.length && signals.every((s) => s instanceof AbortSignal));
+  globalThis.fetch = answering;
+});
+
+test("the clean-up's in_use list has a timeout, and one that times out is skipped", async () => {
+  const signals = [];
+  const answering = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => {
+    signals.push(options.signal);
+    throw new DOMException("The operation timed out.", "TimeoutError");
+  };
+  const report = await clean(env, TENANTS, Date.now());
+  assert.match(report["visit-ee"].skipped, /timed out/);
+  assert.ok(signals.length === 2 && signals.every((s) => s instanceof AbortSignal));
+  globalThis.fetch = answering;
+});
+
+test("GitHub that can't be reached at all is a 503 too", async () => {
+  const answering = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new TypeError("fetch failed");
+  };
+  const response = await upload("good", { "480.jpg": jpeg(480, 360) });
+  assert.equal(response.status, 503);
+  assert.match((await response.json()).error, /can't be reached: fetch failed/);
+  globalThis.fetch = answering;
+});
+
+// The call-log Durable Object's binding, keeping what each request sends it.
+function callLogBinding() {
+  const sent = [];
+  return {
+    sent,
+    idFromName: (name) => ({ name }),
+    get: (id) => ({ fetch: async (url, init) => (sent.push({ id: id.name, url, body: JSON.parse(init.body) }), Response.json({ kept: 1 })) }),
+  };
+}
+
+test("each call to GitHub is a record of github.repo-ops check-push, tried once, as a person waits on it", async () => {
+  assert.equal(POLICIES.H.timeout * 1000, 10_000);
+  env.CALL_LOG = callLogBinding();
+  assert.equal((await upload("good", { "480.jpg": jpeg(480, 360) })).status, 200);
+  const [{ id, url, body }] = env.CALL_LOG.sent;
+  assert.deepEqual([id, url, body.sender], ["storage", "https://call-log/records", "storage"]);
+  const records = body.records.map((r) => [r.repo, r.app, r.plugin, r.operation, r.status, r.outcome]);
+  assert.deepEqual(records, [["storage", "worker", "github.repo-ops", "check-push", 200, "ok"], ["storage", "worker", "github.repo-ops", "check-push", 200, "ok"]]);
+  assert.ok(!JSON.stringify(body).includes("good"), "no token in a record");
+  const answering = globalThis.fetch;
+  let tries = 0;
+  globalThis.fetch = async () => (tries++, new Response("{}", { status: 502 }));
+  allowedCache.entries.clear();
+  const failed = await upload("good", { "480.jpg": jpeg(480, 361) });
+  assert.equal(failed.status, 503);
+  assert.match((await failed.json()).error, /GitHub said 502; try again/);
+  assert.equal(tries, 1);
+  globalThis.fetch = answering;
+});
+
+test("a request's records go to the call log in one call, handed to waitUntil so the answer doesn't wait", async () => {
+  const handed = [];
+  env.CALL_LOG = callLogBinding();
+  const form = new FormData();
+  form.append("480.jpg", new Blob([jpeg(480, 360)]), "480.jpg");
+  const request = new Request("https://storage.example/visit-ee/upload", { method: "POST", body: form, headers: { Authorization: "Bearer good" } });
+  assert.equal((await handle(request, env, TENANTS, { waitUntil: (p) => handed.push(p) })).status, 200);
+  assert.equal(handed.length, 1);
+  await handed[0];
+  assert.equal(env.CALL_LOG.sent.length, 1);
+  assert.equal(env.CALL_LOG.sent[0].body.records.length, 2);
+  // A request that made no calls sends nothing.
+  await handle(new Request("https://storage.example/nope"), env, TENANTS, { waitUntil: (p) => handed.push(p) });
+  await handed[1];
+  assert.equal(env.CALL_LOG.sent.length, 1);
+});
+
+test("without the binding the records are let go, and nothing is written to the bucket", async () => {
+  delete env.CALL_LOG;
+  assert.equal((await upload("good", { "480.jpg": jpeg(480, 360) })).status, 200);
+  assert.deepEqual(callLog.sink.pending, []);
+  assert.ok(![...env.STORAGE.objects.keys()].some((k) => k.startsWith("calls-storage/")));
+});
+
+test("the calls-storage tenant is the call log's buffer: only ingest reads, writes or deletes through the API", () => {
+  assert.deepEqual(REAL_TENANTS["calls-storage"], {
+    private: true, inbox: true, read: ["k8s:integrations/ingest"], write: ["k8s:integrations/ingest"], delete: ["k8s:integrations/ingest"],
+  });
+});
+
+test("the calls-release-controlplane tenant is a call-log buffer both release deployments write", () => {
+  assert.deepEqual(REAL_TENANTS["calls-release-controlplane"], {
+    private: true, inbox: true, read: ["k8s:integrations/ingest"],
+    write: ["k8s:release/app", "k8s:release-schryer/app", "k8s:integrations/ingest"], delete: ["k8s:integrations/ingest"],
+  });
 });

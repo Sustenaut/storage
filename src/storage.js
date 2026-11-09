@@ -2,35 +2,46 @@
 // (functions/[[path]].js), so none of them lives in a site's git
 // repository or in its Pages deployment.
 //
-// Each site is a tenant (tenants.json), with its own part of the bucket:
+// Each site is a tenant (tenants.json), with its own part of the bucket. Every route
+// is here, as openapi.json names it, and tests/openapi.test.js holds the two to each
+// other and to the code:
 //
-//   GET  /<tenant>/p/<id>/<width>.<jpg|webp>   a photo, cached for good: ids
-//                                               are content hashes, so a
-//                                               photo never changes
-//   POST /<tenant>/upload                       a photo from the tenant's
-//                                               editor
-//   GET  /<tenant>/f/<id>/<name>                a file, cached for good: the
-//                                               id is its content's SHA-256
-//   POST /<tenant>/files                        a file, for tenants whose
-//                                               tenants.json entry has "files"
-//   GET  /<tenant>/head/<name>                  the file a named head points
-//                                               at, for tenants with "heads"
-//   PUT  /<tenant>/head/<name>                  move the head to a stored file
-//   GET  /<tenant>/head/<name>/log              where the head has pointed
-//   PUT  /<tenant>/<inbox|batches|rejected>/... a file in a buffer, for tenants
-//                                               with "inbox"
-//   GET  /<tenant>/<inbox|batches|rejected>/... that file
-//   DELETE the same                             that file, for the "delete" list
-//   GET  /<tenant>/list?prefix=...              the buffer's files, oldest name first
-//   POST /_clean                                the nightly clean-up
+//   GET,HEAD /{tenant}/p/{id}/{size}         a photo ({size} is <width>.<jpg|webp>),
+//                                            cached for good: ids are content
+//                                            hashes, so a photo never changes
+//   POST /{tenant}/upload                    a photo from the tenant's editor
+//   GET,HEAD /{tenant}/f/{id}/{name}         a file, cached for good: the id is its
+//                                            content's SHA-256
+//   POST /{tenant}/files                     a file, for tenants whose tenants.json
+//                                            entry has "files"
+//   GET,HEAD /{tenant}/head/{name}           the file a named head points at, for
+//                                            tenants with "heads"
+//   PUT /{tenant}/head/{name}                move the head to a stored file
+//   GET /{tenant}/head/{name}/log            where the head has pointed
+//   PUT,GET,HEAD,DELETE /{tenant}/inbox/{path}
+//   PUT,GET,HEAD,DELETE /{tenant}/rejected/{path}
+//   PUT,GET,HEAD,DELETE /{tenant}/batches/{name}
+//                                            a file in a buffer, for tenants with
+//                                            "inbox"; deleting is for the "delete"
+//                                            list ({path} may hold folders)
+//   GET /{tenant}/list                       a private tenant's files (?prefix=f/),
+//                                            with "files", or its buffer's
+//                                            (?prefix=inbox/ and so on), name order,
+//                                            a page at a time
+//   GET,HEAD /{tenant}/{hostname}/{namespace}/{type}/{index}
+//                                            Terraform's provider network mirror
+//                                            ({index} is index.json or
+//                                            <version>.json), for tenants with
+//                                            "providers"
+//   POST /_clean                             the nightly clean-up
 //
 // An upload is the sizes the editor made in the browser (multipart fields
 // named "<width>.<jpg|webp>"), sent with the editor's GitHub token: they
 // are stored only if that token may push to the tenant's repository. The
 // answer is the photo's description, which the site keeps in its content.
 //
-// A file is one multipart field "file" (with optional "name", "label" and
-// "kept"), of a type the tenant allows (checked by extension and, where the
+// A file is one multipart field "file" (with optional "name", "label",
+// "subject" and "kept"), of a type the tenant allows (checked by extension and, where the
 // format has one, its magic bytes). A service may upload with its GitHub
 // App's installation token instead of a person's token; the file is then
 // recorded as uploaded by the app.
@@ -44,7 +55,11 @@
 // whose list has no "files" key never has files deleted, and a tenant
 // without an in_use list has nothing deleted.
 //
-// A private tenant ("private": true) is different: nothing in it is public.
+// A private tenant ("private": true) is different: nothing in it is public,
+// and its readers may list its files: each one's id, name, size, when it was
+// uploaded and what its upload said (label, kept, by, for, subject), so a site
+// can find the files about one subject, such as a card. A public tenant is never
+// listed.
 // Reading needs an OpenID Connect token (src/jwt.js) whose principal is in
 // its "read" or "write" list, writing one in its "write" list; GitHub tokens
 // aren't taken, unless it says "editors": true, when a GitHub token that may
@@ -59,6 +74,21 @@
 // file it replaces (If-Match) and loses to any other move made since. Moving
 // first writes the head's current place to its log, so a move that fails
 // leaves a true entry behind, and none is ever missing.
+//
+// Every call out (GitHub, a site's in_use list, an issuer's keys) gives up
+// after TIMEOUT_MS. GitHub not answering in time, or failing, is a 503, not a
+// refusal. The calls to GitHub go through integrations' Caller as
+// github.repo-ops check-push, a call a person waits on (class H: 10 s, one try),
+// and each leaves a record in this service's own call-log buffer, the private
+// tenant calls-storage. The records go, after the answer (waitUntil), to
+// integrations' call-log Durable Object (the CALL_LOG binding), which keeps them
+// durably and writes the file every two minutes, even an idle one, so none waits
+// in this Worker's memory and a quiet storage still reports. A
+// yes from GitHub for a token and repository is kept for ALLOWED_FOR_MS (in
+// memory, by the SHA-256 of the token and repository, never the token
+// itself), so a person's upload of many photos asks GitHub once; a revoked
+// push permission therefore lasts up to that much longer. A no, or an error,
+// is never kept.
 
 // A buffer is a private tenant with "inbox": true: files waiting for a job to take
 // them and delete them, in folders it can list. Unlike everything else here a file
@@ -67,6 +97,7 @@
 // replaces the file, which is how a sender retries, as its name holds a hash of it.
 // Deleting takes a place on the tenant's "delete" list, not just its "write" list.
 
+import { Caller, CallLogSink, Unavailable } from "@sustenaut/integrations/caller.js";
 import { isJwt, verify, allowed } from "./jwt.js";
 import TENANTS from "../tenants.json" with { type: "json" };
 
@@ -84,13 +115,35 @@ const HEAD = /^\/([a-z0-9-]+)\/head\/([a-z0-9][a-z0-9._-]{0,63})(\/log)?$/;
 const HASH = /^[0-9a-f]{64}$/;
 const BUFFER = /^\/([a-z0-9-]+)\/((inbox|rejected)\/(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/){0,5}[A-Za-z0-9][A-Za-z0-9._-]{0,119}\.avro|batches\/[A-Za-z0-9][A-Za-z0-9._-]{0,119}\.json)$/;
 const BUFFER_PREFIX = /^(inbox|batches|rejected)\/(?:[A-Za-z0-9][A-Za-z0-9._-]*\/)*(?:[A-Za-z0-9][A-Za-z0-9._-]*)?$/;
+const FILE_PREFIX = /^f\/(?:[0-9a-f]{0,63}|[0-9a-f]{64}(?:\/[A-Za-z0-9._-]{0,120})?)$/;
 const BUFFER_MAX_BYTES = 50 * 1024 * 1024;
 const LIST_LIMIT = 1000;
+// Terraform's provider network mirror protocol, for a tenant with "providers":
+// GET /<tenant>/<hostname>/<namespace>/<type>/index.json and .../<version>.json.
+const PROVIDER_INDEX = /^\/([a-z0-9-]+)\/((?:[a-z0-9-]+\.)+[a-z]{2,})\/([a-z0-9-]{1,64})\/([a-z0-9-]{1,64})\/(index|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]{1,32})?)\.json$/;
+const PROVIDER_SUBJECT = /^((?:[a-z0-9-]+\.)+[a-z]{2,})\/([a-z0-9-]{1,64})\/([a-z0-9-]{1,64})$/;
+const PROVIDER_ARCHIVE = /^terraform-provider-([a-z0-9-]{1,64})_(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]{1,32})?)_([a-z0-9]{1,16})_([a-z0-9]{1,16})\.zip$/;
+const PROVIDER_INDEX_SECONDS = 300;
+const TIMEOUT_MS = 10_000;
+const ALLOWED_FOR_MS = 60e3;
+const ALLOWED_MAX = 1000;
+
+// This service's calls and their records, sent to the request at hand's CALL_LOG
+// binding, as a Worker's bindings come with each request.
+const current = { env: null };
+export const callLog = {
+  sink: new CallLogSink({ sender: "storage", namespace: () => current.env.CALL_LOG }),
+};
+callLog.caller = new Caller("storage", "worker", { sink: callLog.sink });
+
+// The yeses GitHub gave, by sha256(token, repository): { login, app, until }.
+// now is the clock, which the tests set.
+export const allowedCache = { now: () => Date.now(), entries: new Map() };
 
 // The file types a tenant may allow: Content-Type, whether a browser shows
 // it inline, and a check of its first bytes.
 const ascii = (b, at, text) => String.fromCharCode(...b.slice(at, at + text.length)) === text;
-const isZip = (b) => ascii(b, 0, "PK\x03\x04"); // docx, pptx and xlsx are zip archives
+const isZip = (b) => ascii(b, 0, "PK\x03\x04"); // docx, pptx, xlsx and whl are zip archives, as zip is
 const isText = (b) => !b.slice(0, 4096).includes(0);
 export const FILE_TYPES = {
   pdf: { type: "application/pdf", inline: true, check: (b) => ascii(b, 0, "%PDF-") },
@@ -109,6 +162,10 @@ export const FILE_TYPES = {
   cbor: { type: "application/cbor", inline: false, check: (b) => b.length > 0 && b[0] >= 0xa0 && b[0] <= 0xbf },
   json: { type: "application/json", inline: true, check: isJson },
   gz: { type: "application/gzip", inline: false, check: (b) => b[0] === 0x1f && b[1] === 0x8b },
+  // A Python wheel is a zip archive. It is served as one: pip and uv go by its name.
+  whl: { type: "application/zip", inline: false, check: isZip },
+  // A Terraform provider's release archive.
+  zip: { type: "application/zip", inline: false, check: isZip },
   avro: { type: "application/avro", inline: false, check: (b) => b[0] === 0x4f && b[1] === 0x62 && b[2] === 0x6a && b[3] === 0x01 },
 };
 
@@ -123,7 +180,21 @@ function isJson(b) {
 
 // env: STORAGE, the R2 bucket.
 // tenants: tenants.json, or the tests' own.
-export async function handle(request, env, tenants = TENANTS) {
+// waitUntil: the request's, for sending its call records after the answer.
+export async function handle(request, env, tenants = TENANTS, { waitUntil } = {}) {
+  current.env = env;
+  try {
+    return await answer(request, env, tenants);
+  } finally {
+    // Without the binding (the tests' own environments) the records are let go.
+    if (!env.CALL_LOG) callLog.sink.pending = [];
+    const sent = callLog.sink.send();
+    if (waitUntil) waitUntil(sent);
+    else await sent;
+  }
+}
+
+async function answer(request, env, tenants) {
   const url = new URL(request.url);
   const tenantId = url.pathname.split("/")[1];
   const tenant = tenants[tenantId];
@@ -138,37 +209,102 @@ export async function handle(request, env, tenants = TENANTS) {
       return json(await clean(env, tenants, now), 200);
     }
     if (!tenant) throw status(404, "not found");
+    if (url.pathname === `/${tenantId}/list` && request.method === "GET") return await list(request, env, url, tenantId, tenant);
     if (tenant.private && tenant.inbox) {
       const answered = await buffer(request, env, url, tenantId, tenant);
       if (answered) return answered;
+    }
+    if (tenant.providers && (request.method === "GET" || request.method === "HEAD")) {
+      const route = url.pathname.match(PROVIDER_INDEX);
+      if (route && route[1] === tenantId) return await providerIndex(request, env, url, route);
     }
     if (request.method === "GET" || request.method === "HEAD") return await serve(url, env, request, tenant);
     if (request.method === "PUT") return await moveHead(request, env, url, tenant);
     if (request.method === "POST" && url.pathname === `/${tenantId}/upload`) return json(await upload(request, env, tenantId, tenant), 200, cors);
     if (request.method === "POST" && url.pathname === `/${tenantId}/files`) return json(await uploadFile(request, env, tenantId, tenant), 200, cors);
-    throw status(404, "not found");
+    throw unrouted();
   } catch (err) {
     return json({ error: err.message }, err.status || 500, cors);
   }
 }
 
+// A page of a private tenant's files (prefix f/, with "files") or of its buffer's
+// folders (with "inbox"), for its readers, in name order. Public tenants aren't listed.
+async function list(request, env, url, tenantId, tenant) {
+  const prefix = url.searchParams.get("prefix") || "";
+  const files = tenant.private && tenant.files && prefix.startsWith("f/");
+  if (!files && !(tenant.private && tenant.inbox)) throw status(404, "this tenant isn't listed");
+  await reader(request, tenant);
+  if (files && !FILE_PREFIX.test(prefix)) throw status(400, "the prefix is f/, then part or all of an id, then /, then the start of a name");
+  if (!files && !BUFFER_PREFIX.test(prefix)) throw status(400, "the prefix is inbox/, batches/ or rejected/ and folders under it");
+  const asked = Number(url.searchParams.get("limit") || LIST_LIMIT);
+  if (!Number.isInteger(asked) || asked < 1 || asked > LIST_LIMIT) throw status(400, `the limit is 1 to ${LIST_LIMIT}`);
+  const page = await env.STORAGE.list({
+    prefix: `${tenantId}/${prefix}`,
+    limit: asked,
+    cursor: url.searchParams.get("cursor") || undefined,
+    ...(files && { include: ["customMetadata"] }),
+  });
+  const entries = page.objects.map((o) => (files ? fileEntry(tenantId, o) : { name: o.key.slice(tenantId.length + 1), size: o.size, uploaded: o.uploaded }));
+  return json({ files: entries, cursor: page.truncated ? page.cursor : null }, 200, privateHeaders(request, tenant));
+}
+
+// A stored file as a listing gives it: where it is, and what its upload said of it.
+function fileEntry(tenantId, o) {
+  const [, , id, name] = o.key.split("/");
+  const meta = o.customMetadata || {};
+  const metadata = {};
+  for (const key of ["label", "kept", "by", "for", "subject"]) if (meta[key] !== undefined) metadata[key] = meta[key];
+  const uploaded = meta.uploaded || new Date(o.uploaded).toISOString();
+  return { name, id, url: `/${o.key}`, size: o.size, uploaded, metadata };
+}
+
+// Terraform's provider network mirror protocol, from the archives a tenant
+// with "providers" keeps: each uploaded with its provider's address
+// (<hostname>/<namespace>/<type>) as its subject, and named as the provider's
+// release names it. An archive's id is its SHA-256, which is the "zh:" hash a
+// .terraform.lock.hcl pins, so Terraform checks what it gets here. Short
+// lived at Cloudflare and in a client, as a new version can come in.
+async function providerIndex(request, env, url, route) {
+  const [, tenantId, hostname, namespace, type, asked] = route;
+  const subject = `${hostname}/${namespace}/${type}`;
+  const versions = {};
+  let cursor;
+  do {
+    const page = await env.STORAGE.list({ prefix: `${tenantId}/f/`, cursor, include: ["customMetadata"] });
+    for (const o of page.objects) {
+      if (o.customMetadata?.subject !== subject) continue;
+      const [, , id, name] = o.key.split("/");
+      const archive = name.match(PROVIDER_ARCHIVE);
+      if (!archive || archive[1] !== type) continue;
+      const [, , version, os, arch] = archive;
+      versions[version] ??= {};
+      versions[version][`${os}_${arch}`] = { url: `${url.origin}/${o.key}`, hashes: [`zh:${id}`] };
+    }
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  const headers = { "Cache-Control": `public, max-age=${PROVIDER_INDEX_SECONDS}`, "Access-Control-Allow-Origin": "*" };
+  if (asked === "index") return json({ versions: Object.fromEntries(Object.keys(versions).sort(byVersion).map((v) => [v, {}])) }, 200, headers);
+  if (!versions[asked]) throw status(404, `${subject} ${asked} isn't mirrored here`);
+  return json({ archives: versions[asked] }, 200, headers);
+}
+
+// Versions in release order: 9.0.0 before 10.0.0, and a prerelease before its release.
+export function byVersion(a, b) {
+  const [ma, pa = ""] = a.split(/-(.*)/s);
+  const [mb, pb = ""] = b.split(/-(.*)/s);
+  const na = ma.split(".").map(Number);
+  const nb = mb.split(".").map(Number);
+  for (let i = 0; i < 3; i++) if (na[i] !== nb[i]) return na[i] - nb[i];
+  if (pa === pb) return 0;
+  if (!pa) return 1;
+  if (!pb) return -1;
+  return pa.localeCompare(pb);
+}
+
 // A request for a tenant's buffer; nothing if it's for something else.
 async function buffer(request, env, url, tenantId, tenant) {
   const headers = privateHeaders(request, tenant);
-  if (url.pathname === `/${tenantId}/list` && request.method === "GET") {
-    await reader(request, tenant);
-    const prefix = url.searchParams.get("prefix") || "";
-    if (!BUFFER_PREFIX.test(prefix)) throw status(400, "the prefix is inbox/, batches/ or rejected/ and folders under it");
-    const asked = Number(url.searchParams.get("limit") || LIST_LIMIT);
-    if (!Number.isInteger(asked) || asked < 1 || asked > LIST_LIMIT) throw status(400, `the limit is 1 to ${LIST_LIMIT}`);
-    const page = await env.STORAGE.list({
-      prefix: `${tenantId}/${prefix}`,
-      limit: asked,
-      cursor: url.searchParams.get("cursor") || undefined,
-    });
-    const files = page.objects.map((o) => ({ name: o.key.slice(tenantId.length + 1), size: o.size, uploaded: o.uploaded }));
-    return json({ files, cursor: page.truncated ? page.cursor : null }, 200, headers);
-  }
   const route = url.pathname.match(BUFFER);
   if (!route || route[1] !== tenantId) return null;
   const key = url.pathname.slice(1);
@@ -196,7 +332,7 @@ async function buffer(request, env, url, tenantId, tenant) {
     await env.STORAGE.delete(key);
     return new Response(null, { status: 204, headers });
   }
-  throw status(405, "not allowed");
+  throw status(405, "no such route: not allowed");
 }
 
 // A photo, from Cloudflare's cache where it can be (the Cache API works on
@@ -210,7 +346,7 @@ async function serve(url, env, request, tenant) {
   const photo = url.pathname.match(PHOTO);
   const file = !photo && url.pathname.match(FILE);
   const kind = file && FILE_TYPES[extension(file[3])];
-  if (!photo && !(kind && tenant.files)) throw status(404, "not found");
+  if (!photo && !(kind && tenant.files)) throw unrouted();
   const cache = !closed && request.method === "GET" && globalThis.caches?.default;
   const hit = cache && (await cache.match(request));
   if (hit) return hit;
@@ -284,7 +420,7 @@ async function headLog(env, [, tenantId, name], tenant) {
 // If-None-Match: * for its first move.
 async function moveHead(request, env, url, tenant) {
   const route = url.pathname.match(HEAD);
-  if (!route || route[3]) throw status(404, "not found");
+  if (!route || route[3]) throw unrouted();
   const [, tenantId, name] = route;
   const { login } = await writer(request, tenant);
   const head = await readHead(env, tenantId, name, tenant);
@@ -358,7 +494,7 @@ export async function uploadFile(request, env, tenantId, tenant) {
   const form = await request.formData();
   const file = form.get("file");
   for (const field of form.keys()) {
-    if (!["file", "name", "label", "kept", "for"].includes(field)) throw status(400, `unexpected field ${field}`);
+    if (!["file", "name", "label", "kept", "for", "subject"].includes(field)) throw status(400, `unexpected field ${field}`);
   }
   if (!file || typeof file === "string") throw status(400, "no file");
   const name = String(form.get("name") || file.name || "").trim();
@@ -371,7 +507,10 @@ export async function uploadFile(request, env, tenantId, tenant) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (bytes.length > max) throw status(413, `${name} is over ${max} bytes`);
   if (!kind.check(bytes)) throw status(400, `${name} is not a .${ext} file`);
+  if (tenant.providers) providerUpload(name, String(form.get("subject") || "").trim());
   const label = String(form.get("label") || "").trim().slice(0, LABEL_CHARS);
+  // What the file is about, such as a card, so a listing can find a subject's files.
+  const subject = String(form.get("subject") || "").trim().slice(0, LABEL_CHARS);
   // A tenant whose files are all kept (sources: papers and signed objects) keeps every upload.
   const kept = tenant.files.kept === true || form.get("kept") === "true";
 
@@ -382,9 +521,19 @@ export async function uploadFile(request, env, tenantId, tenant) {
   const keep = kept || before?.customMetadata?.kept === "true";
   const customMetadata = { uploaded: new Date().toISOString(), by: who.login, kept: String(keep) };
   if (label) customMetadata.label = label;
+  if (subject) customMetadata.subject = subject;
   if (who.app && form.get("for")) customMetadata.for = String(form.get("for")).slice(0, LABEL_CHARS);
   await env.STORAGE.put(key, bytes, { httpMetadata: { contentType: kind.type }, customMetadata });
-  return { id, name, url: `/${key}`, type: kind.type, size: bytes.length, label, kept: keep };
+  return { id, name, url: `/${key}`, type: kind.type, size: bytes.length, label, subject, kept: keep };
+}
+
+// A provider archive is kept under its provider's address, as its release names it.
+function providerUpload(name, subject) {
+  const archive = name.match(PROVIDER_ARCHIVE);
+  if (!archive) throw status(400, "a provider archive is named terraform-provider-<type>_<version>_<os>_<arch>.zip");
+  const address = subject.match(PROVIDER_SUBJECT);
+  if (!address) throw status(400, "the subject is the provider's address, <hostname>/<namespace>/<type>");
+  if (address[3] !== archive[1]) throw status(400, `${name} is not an archive of ${subject}`);
 }
 
 // Who may write to the tenant: an OpenID Connect token's principal in its
@@ -429,14 +578,36 @@ function bearer(request) {
 // (contents: write).
 async function editor(request, repository) {
   const token = bearer(request);
+  const key = await hash(new TextEncoder().encode(`${token}\n${repository}`), 32);
+  const now = allowedCache.now();
+  const hit = allowedCache.entries.get(key);
+  if (hit && hit.until > now) return { login: hit.login, app: hit.app };
+  allowedCache.entries.delete(key);
   const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "User-Agent": "sustenaut-storage" };
-  if (token.startsWith("ghs_")) return { login: "github-app", app: true, ...(await installation(headers, repository)) };
-  return { login: await person(headers, repository), app: false };
+  const who = token.startsWith("ghs_")
+    ? { login: "github-app", app: true, ...(await installation(headers, repository)) }
+    : { login: await person(headers, repository), app: false };
+  // The oldest entry goes first when the cache is full.
+  if (allowedCache.entries.size >= ALLOWED_MAX) allowedCache.entries.delete(allowedCache.entries.keys().next().value);
+  allowedCache.entries.set(key, { login: who.login, app: who.app, until: now + ALLOWED_FOR_MS });
+  return who;
+}
+
+// GitHub's answer, or a 503 if it gives none in time or fails.
+async function gitHub(url, headers) {
+  try {
+    return await callLog.caller.call("github.repo-ops", "check-push", { method: "GET", url, headers });
+  } catch (err) {
+    if (!(err instanceof Unavailable)) throw err;
+    if (err.answer) throw status(503, `GitHub said ${err.answer.status}; try again`);
+    if (/timed out/.test(err.detail)) throw status(503, `GitHub didn't answer within ${TIMEOUT_MS / 1000} s; try again`);
+    throw status(503, `GitHub can't be reached: ${err.detail.replace(/^no answer: /, "")}`);
+  }
 }
 
 async function installation(headers, repository) {
   for (let page = 1; page <= 10; page++) {
-    const r = await fetch(`https://api.github.com/installation/repositories?per_page=100&page=${page}`, { headers });
+    const r = await gitHub(`https://api.github.com/installation/repositories?per_page=100&page=${page}`, headers);
     if (!r.ok) throw status(403, `GitHub said ${r.status} for the app's repositories`);
     const { repositories = [] } = await r.json();
     const repo = repositories.find((x) => x.full_name?.toLowerCase() === repository.toLowerCase());
@@ -450,10 +621,10 @@ async function installation(headers, repository) {
 }
 
 async function person(headers, repository) {
-  const repo = await fetch(`https://api.github.com/repos/${repository}`, { headers });
+  const repo = await gitHub(`https://api.github.com/repos/${repository}`, headers);
   if (!repo.ok) throw status(403, `GitHub said ${repo.status} for ${repository}`);
   if (!(await repo.json()).permissions?.push) throw status(403, `that token can't write to ${repository}`);
-  const user = await fetch("https://api.github.com/user", { headers });
+  const user = await gitHub("https://api.github.com/user", headers);
   return user.ok ? (await user.json()).login || "?" : "?";
 }
 
@@ -477,7 +648,7 @@ export async function clean(env, tenants = TENANTS, now = Date.now()) {
       report[tenantId] = { skipped: "no in_use list: nothing is cleaned" };
       continue;
     }
-    const response = await fetch(tenant.in_use).catch((err) => ({ ok: false, status: err.message }));
+    const response = await fetch(tenant.in_use, { signal: AbortSignal.timeout(TIMEOUT_MS) }).catch((err) => ({ ok: false, status: err.message }));
     if (!response.ok) {
       report[tenantId] = { skipped: `${tenant.in_use}: ${response.status}` };
       continue;
@@ -551,6 +722,12 @@ export function jpegSize(b) {
 async function hash(bytes, length = 8) {
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
   return [...digest.slice(0, length)].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+// A request no route here answers, as opposed to one for something not stored:
+// tests/openapi.test.js holds every route in openapi.json to not getting this.
+function unrouted() {
+  return status(404, "no such route");
 }
 
 function status(code, message) {

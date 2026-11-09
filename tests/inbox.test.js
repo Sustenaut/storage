@@ -3,6 +3,7 @@ import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { handle } from "../src/storage.js";
 import { forgetKeys, AUDIENCE } from "../src/jwt.js";
+import REAL_TENANTS from "../tenants.json" with { type: "json" };
 
 const ISSUER = "https://token.actions.githubusercontent.com";
 const RSA = { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" };
@@ -172,4 +173,18 @@ test("a tenant without a buffer, or a public one, has none of this", async () =>
 
 test("other methods on a buffer's file aren't allowed", async () => {
   assert.equal((await request(FILE, { method: "POST", body: AVRO })).status, 405);
+});
+
+// Whoever takes a buffer's files writes there too: a record of each load in batches/,
+// and a file that won't load moved to rejected/. So every principal on a buffer's
+// delete list is on its write list, and only its readers and writers may delete.
+test("every buffer's deleter may also write and read it", () => {
+  const buffers = Object.entries(REAL_TENANTS).filter(([, t]) => t.private && t.inbox);
+  assert.ok(buffers.length > 0);
+  for (const [name, t] of buffers) {
+    for (const principal of t.delete ?? []) {
+      assert.ok(t.write?.includes(principal), `${name}: ${principal} deletes but may not write batches/ or rejected/`);
+      assert.ok(t.read?.includes(principal), `${name}: ${principal} deletes but may not read`);
+    }
+  }
 });

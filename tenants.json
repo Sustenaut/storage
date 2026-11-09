@@ -134,6 +134,35 @@
       "kept": true
     }
   },
+  "plane": {
+    "private": true,
+    "heads": true,
+    "read": [
+      "github:Sustenaut/observability@refs/heads/main",
+      "github:Sustenaut/notifier@refs/heads/main",
+      "github:Sustenaut/integrations@refs/heads/main",
+      "github:Sustenaut/release-controlplane@refs/heads/main",
+      "github:Sustenaut/opportunity-site@refs/heads/main",
+      "github:Sustenaut/notebooks@refs/heads/main",
+      "github:Sustenaut/auth@refs/heads/main"
+    ],
+    "write": [
+      "github:Sustenaut/observability@refs/heads/main",
+      "github:Sustenaut/notifier@refs/heads/main",
+      "github:Sustenaut/integrations@refs/heads/main",
+      "github:Sustenaut/release-controlplane@refs/heads/main",
+      "github:Sustenaut/opportunity-site@refs/heads/main",
+      "github:Sustenaut/notebooks@refs/heads/main",
+      "github:Sustenaut/auth@refs/heads/main"
+    ],
+    "files": {
+      "types": [
+        "json"
+      ],
+      "max_bytes": 1048576,
+      "kept": true
+    }
+  },
   "calls-integrations": {
     "private": true,
     "inbox": true,
@@ -183,10 +212,107 @@
       "k8s:integrations/ingest"
     ],
     "write": [
+      "gcp:sustenaut-app@sustenaut.iam.gserviceaccount.com",
       "k8s:integrations/ingest"
     ],
     "delete": [
       "k8s:integrations/ingest"
     ]
+  },
+  "signals": {
+    "private": true,
+    "inbox": true,
+    "read": [
+      "k8s:integrations/ingest"
+    ],
+    "write": [
+      "k8s:observability/evaluator",
+      "k8s:integrations/ingest"
+    ],
+    "delete": [
+      "k8s:integrations/ingest"
+    ]
+  },
+  "notifier": {
+    "private": true,
+    "heads": true,
+    "read": [
+      "k8s:notifier/app"
+    ],
+    "write": [
+      "k8s:notifier/app"
+    ],
+    "files": {
+      "types": [
+        "json"
+      ]
+    }
+  },
+  "calls-storage": {
+    "private": true,
+    "inbox": true,
+    "read": [
+      "k8s:integrations/ingest"
+    ],
+    "write": [
+      "k8s:integrations/ingest"
+    ],
+    "delete": [
+      "k8s:integrations/ingest"
+    ]
+  },
+  "calls-release-controlplane": {
+    "private": true,
+    "inbox": true,
+    "read": [
+      "k8s:integrations/ingest"
+    ],
+    "write": [
+      "k8s:release/app",
+      "k8s:release-schryer/app",
+      "k8s:integrations/ingest"
+    ],
+    "delete": [
+      "k8s:integrations/ingest"
+    ]
+  },
+  "calls-notifier": {
+    "private": true,
+    "inbox": true,
+    "read": [
+      "k8s:integrations/ingest"
+    ],
+    "write": [
+      "k8s:notifier/app",
+      "k8s:integrations/ingest"
+    ],
+    "delete": [
+      "k8s:integrations/ingest"
+    ]
+  },
+  "wheels": {
+    "write": [
+      "github:Sustenaut/storage@refs/heads/main"
+    ],
+    "files": {
+      "types": [
+        "whl"
+      ],
+      "max_bytes": 26214400,
+      "kept": true
+    }
+  },
+  "terraform": {
+    "write": [
+      "github:Sustenaut/storage@refs/heads/main"
+    ],
+    "providers": true,
+    "files": {
+      "types": [
+        "zip"
+      ],
+      "max_bytes": 104857600,
+      "kept": true
+    }
   }
 }

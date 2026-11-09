@@ -13,7 +13,7 @@ jobs:
   # it ran are skipped, and nothing here tests less than the queue did.
   tested:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-tested.yml@7914b2abb933747e303f5f981d8335d3704dcdb3 # v0.21.0
+    uses: Sustenaut/pubkit/.github/workflows/job-tested.yml@d634bd9ba97c6933561e9e7d1ceff5b975e8f22e # v0.28.0
     with: {"workflow": ".github/workflows/pr.yml"}
     permissions:
       actions: read
@@ -23,15 +23,26 @@ jobs:
     name: ci
     needs: [tested]
     if: ${{ needs.tested.outputs.tested != 'true' }}
-    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@7914b2abb933747e303f5f981d8335d3704dcdb3 # v0.21.0
-    with: {"shellcheck": "with-secrets"}
+    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@d634bd9ba97c6933561e9e7d1ceff5b975e8f22e # v0.28.0
+    with: {"shellcheck": "with-secrets mirror/*.sh"}
 
   tests:
     name: ci
     needs: [tested]
     if: ${{ needs.tested.outputs.tested != 'true' }}
-    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@7914b2abb933747e303f5f981d8335d3704dcdb3 # v0.21.0
+    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@d634bd9ba97c6933561e9e7d1ceff5b975e8f22e # v0.28.0
     with: {"setup": "npm ci", "test": "npm test"}
+
+  sonar:
+    name: ci
+    needs: [tested, tests]
+    if: ${{ !failure() && !cancelled() }}
+    uses: Sustenaut/pubkit/.github/workflows/job-sonar.yml@d634bd9ba97c6933561e9e7d1ceff5b975e8f22e # v0.28.0
+    permissions:
+      actions: read
+      contents: read
+    with: {"reports": "sonar.python.coverage.reportPaths=*.xml sonar.javascript.lcov.reportPaths=lcov.info", "coverage-run": "${{ needs.tested.outputs.run-id }}"}
+    secrets: { SONAR_TOKEN: '${{ secrets.SONAR_TOKEN }}' }
 
   # The one check a ruleset requires: it passes only when every job
   # above succeeded or, where the merge queue already passed the
@@ -39,7 +50,7 @@ jobs:
   passed:
     name: ci / passed
     if: always()
-    needs: [tested, checks, tests]
+    needs: [tested, checks, tests, sonar]
     runs-on: ubuntu-latest
     steps:
       - run: |

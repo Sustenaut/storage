@@ -5,25 +5,7 @@ import assert from "node:assert/strict";
 import { handle, clean } from "../src/storage.js";
 import { verify, allowed, isJwt, forgetKeys, AUDIENCE } from "../src/jwt.js";
 import REAL_TENANTS from "../tenants.json" with { type: "json" };
-
-const ISSUER = "https://token.actions.githubusercontent.com";
-const JWKS = `${ISSUER}/.well-known/jwks`;
-const RSA = { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" };
-const issuerKey = await crypto.subtle.generateKey(RSA, true, ["sign", "verify"]);
-const otherKey = await crypto.subtle.generateKey(RSA, true, ["sign", "verify"]);
-const publicJwk = { ...(await crypto.subtle.exportKey("jwk", issuerKey.publicKey)), kid: "k1", use: "sig" };
-
-const b64url = (bytes) => Buffer.from(bytes).toString("base64url");
-const now = () => Math.floor(Date.now() / 1000);
-
-// A GitHub Actions token for a repository and ref, with any claim overridden.
-async function token(repository, ref = "refs/heads/main", { claims = {}, header = {}, key = issuerKey.privateKey } = {}) {
-  const h = b64url(JSON.stringify({ alg: "RS256", typ: "JWT", kid: "k1", ...header }));
-  const body = { iss: ISSUER, aud: AUDIENCE, repository, ref, iat: now(), nbf: now() - 5, exp: now() + 300, ...claims };
-  const p = b64url(JSON.stringify(body));
-  const s = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(`${h}.${p}`));
-  return `${h}.${p}.${b64url(new Uint8Array(s))}`;
-}
+import { ISSUER, JWKS, RSA, issuerKey, otherKey, publicJwk, b64url, now, token } from "./oidc.js";
 
 function bucket() {
   const objects = new Map();
@@ -52,6 +34,7 @@ const TENANTS = {
   photos: { repository: "schryer/visit-ee", origins: [], write: ["github:schryer/visit-ee@refs/heads/main"], files: { types: ["pdf"] } },
   // A public tenant that takes only GitHub tokens.
   plain: { repository: "schryer/visit-ee", origins: [], files: { types: ["pdf"] } },
+  wheels: REAL_TENANTS.wheels,
 };
 const call = (request) => handle(request, env, TENANTS);
 const gz = () => new Uint8Array([0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 3, 1, 2, 3]);
@@ -165,6 +148,36 @@ test("a public tenant takes a workflow's token when its write list names it, and
   assert.equal(read.status, 200, "public files need no token");
   assert.equal(read.headers.get("Access-Control-Allow-Origin"), "*");
   assert.match(read.headers.get("Cache-Control"), /public/);
+});
+
+test("the wheels tenant is public, kept, never cleaned, and only storage's own main writes it", () => {
+  const t = REAL_TENANTS.wheels;
+  assert.equal(t.private, undefined);
+  assert.equal(t.repository, undefined, "no editors: no GitHub token can write here");
+  assert.deepEqual(t.write, ["github:Sustenaut/storage@refs/heads/main"]);
+  assert.deepEqual(t.files, { types: ["whl"], max_bytes: 26214400, kept: true });
+  assert.equal(t.in_use, undefined, "nothing is cleaned");
+});
+
+test("a mirrored wheel is at the address its lock's sha256 names, for anyone, and a .whl must be a zip", async () => {
+  const wheel = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 1, 2, 3, 4]);
+  const sha = Buffer.from(await crypto.subtle.digest("SHA-256", wheel)).toString("hex");
+  const name = "pubkit-0.31.3-py3-none-any.whl";
+  const response = await put("wheels", await token("Sustenaut/storage"), name, wheel);
+  assert.equal(response.status, 200);
+  const file = await response.json();
+  assert.equal(file.url, `/wheels/f/${sha}/${name}`);
+  assert.equal(file.kept, true);
+  const read = await get(`/wheels/f/${sha}/${name}`);
+  assert.equal(read.status, 200, "no token needed");
+  assert.equal(read.headers.get("Content-Type"), "application/zip");
+  assert.deepEqual(new Uint8Array(await read.arrayBuffer()), wheel);
+
+  assert.equal((await put("wheels", await token("Sustenaut/storage", "refs/heads/x"), name, wheel)).status, 403, "only main");
+  assert.equal((await put("wheels", await token("Sustenaut/pubkit"), name, wheel)).status, 403, "the packages don't write it");
+  assert.equal((await put("wheels", "good", name, wheel)).status, 401, "nor do GitHub tokens");
+  assert.equal((await put("wheels", await token("Sustenaut/storage"), name, pdf())).status, 400, "a .whl must be a zip");
+  assert.equal((await put("wheels", await token("Sustenaut/storage"), "a.pdf", pdf())).status, 415);
 });
 
 test("tokens are refused unless RS256, from a trusted issuer, signed by its key, for this audience and in date", async () => {
