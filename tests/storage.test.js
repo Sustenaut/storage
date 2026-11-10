@@ -563,6 +563,15 @@ test("the calls-storage tenant is the call log's buffer: only ingest reads, writ
   });
 });
 
+test("the convergence engine's buffers, need-states and calls-convergence-engine, only it and ingest write", () => {
+  for (const name of ["need-states", "calls-convergence-engine"]) {
+    assert.deepEqual(REAL_TENANTS[name], {
+      private: true, inbox: true, read: ["k8s:integrations/ingest"],
+      write: ["k8s:convergence/app", "k8s:integrations/ingest"], delete: ["k8s:integrations/ingest"],
+    });
+  }
+});
+
 test("the calls-release-controlplane tenant is a call-log buffer both release deployments write", () => {
   assert.deepEqual(REAL_TENANTS["calls-release-controlplane"], {
     private: true, inbox: true, read: ["k8s:integrations/ingest"],

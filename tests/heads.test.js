@@ -287,9 +287,9 @@ test("one deployment's token can't read the other's tenant", () => {
 
 const PLANE = ["observability", "notifier", "integrations", "release-controlplane", "opportunity-site", "notebooks", "auth"];
 
-test("the plane tenant is read and written by each plane repository's main alone", () => {
+test("the plane tenant is read and written by each plane repository's main and the convergence engine alone", () => {
   const t = REAL_TENANTS.plane;
-  const mains = PLANE.map((r) => `github:Sustenaut/${r}@refs/heads/main`);
+  const mains = [...PLANE.map((r) => `github:Sustenaut/${r}@refs/heads/main`), "k8s:convergence/app"];
   assert.equal(t.private, true);
   assert.equal(t.heads, true);
   assert.deepEqual(t.read, mains);
