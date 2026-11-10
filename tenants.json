@@ -148,7 +148,8 @@
       "github:Sustenaut/release-controlplane@refs/heads/main",
       "github:Sustenaut/opportunity-site@refs/heads/main",
       "github:Sustenaut/notebooks@refs/heads/main",
-      "github:Sustenaut/auth@refs/heads/main"
+      "github:Sustenaut/auth@refs/heads/main",
+      "k8s:convergence/app"
     ],
     "write": [
       "github:Sustenaut/observability@refs/heads/main",
@@ -157,7 +158,8 @@
       "github:Sustenaut/release-controlplane@refs/heads/main",
       "github:Sustenaut/opportunity-site@refs/heads/main",
       "github:Sustenaut/notebooks@refs/heads/main",
-      "github:Sustenaut/auth@refs/heads/main"
+      "github:Sustenaut/auth@refs/heads/main",
+      "k8s:convergence/app"
     ],
     "files": {
       "types": [
@@ -333,5 +335,33 @@
       "max_bytes": 104857600,
       "kept": true
     }
+  },
+  "need-states": {
+    "private": true,
+    "inbox": true,
+    "read": [
+      "k8s:integrations/ingest"
+    ],
+    "write": [
+      "k8s:convergence/app",
+      "k8s:integrations/ingest"
+    ],
+    "delete": [
+      "k8s:integrations/ingest"
+    ]
+  },
+  "calls-convergence-engine": {
+    "private": true,
+    "inbox": true,
+    "read": [
+      "k8s:integrations/ingest"
+    ],
+    "write": [
+      "k8s:convergence/app",
+      "k8s:integrations/ingest"
+    ],
+    "delete": [
+      "k8s:integrations/ingest"
+    ]
   }
 }
