@@ -33,7 +33,7 @@ jobs:
       # wrangler package-lock.json pins (npm run deploy), not the one
       # deploy-static brings. wrangler pages deploy, run from the
       # repository's root, takes functions/ and wrangler.toml from there.
-      - uses: Sustenaut/pubkit/actions/deploy-static@74ab84e90fc8b6f691ef4b3d717a9e838d49e4a8 # v0.34.0
+      - uses: Sustenaut/pubhost/actions/deploy-static@2196c741d3de6c92c6035c42435c6e517c8ba0ce # v0.1.0
         with:
           dir: public
           check-only: 'true'

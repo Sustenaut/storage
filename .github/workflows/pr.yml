@@ -14,7 +14,7 @@ jobs:
   # jobs it ran are skipped, and nothing here tests less than it did.
   tested:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-tested.yml@74ab84e90fc8b6f691ef4b3d717a9e838d49e4a8 # v0.34.0
+    uses: Sustenaut/pubkit/.github/workflows/job-tested.yml@3bf6ed20f0ae2fe63ffb08cba96fe59a6cfddcb1 # v0.35.0
     with: {"workflow": ".github/workflows/pr.yml"}
     permissions:
       actions: read
@@ -24,21 +24,21 @@ jobs:
     name: ci
     needs: [tested]
     if: ${{ needs.tested.outputs.tested != 'true' }}
-    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@74ab84e90fc8b6f691ef4b3d717a9e838d49e4a8 # v0.34.0
+    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@3bf6ed20f0ae2fe63ffb08cba96fe59a6cfddcb1 # v0.35.0
     with: {"shellcheck": "with-secrets mirror/*.sh scripts/*.sh"}
 
   tests:
     name: ci
     needs: [tested]
     if: ${{ needs.tested.outputs.tested != 'true' }}
-    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@74ab84e90fc8b6f691ef4b3d717a9e838d49e4a8 # v0.34.0
+    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@3bf6ed20f0ae2fe63ffb08cba96fe59a6cfddcb1 # v0.35.0
     with: {"setup": "npm ci", "test": "npm test"}
 
   sonar:
     name: ci
     needs: [tested, tests]
     if: ${{ needs.tested.outputs.tested != 'true' }}
-    uses: Sustenaut/pubkit/.github/workflows/job-sonar.yml@74ab84e90fc8b6f691ef4b3d717a9e838d49e4a8 # v0.34.0
+    uses: Sustenaut/pubkit/.github/workflows/job-sonar.yml@3bf6ed20f0ae2fe63ffb08cba96fe59a6cfddcb1 # v0.35.0
     with: {"reports": "sonar.python.coverage.reportPaths=*.xml sonar.javascript.lcov.reportPaths=lcov.info"}
     secrets: { SONAR_TOKEN: '${{ secrets.SONAR_TOKEN }}' }
 
@@ -49,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: Sustenaut/pubkit/actions/deploy-static@74ab84e90fc8b6f691ef4b3d717a9e838d49e4a8 # v0.34.0
+      - uses: Sustenaut/pubhost/actions/deploy-static@2196c741d3de6c92c6035c42435c6e517c8ba0ce # v0.1.0
         with: {"dir": "public", "check-only": "true"}
 
   # The one check a ruleset requires: it passes only when every job

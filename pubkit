@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Managed by pubkit 0.34.0: `pubkit sync` rewrites this file, and
+# Managed by pubkit 0.35.0: `pubkit sync` rewrites this file, and
 # `pubkit sync --check` fails when it differs.
 #
 # Run this repository's pubkit: the version its managed files and
 # tests/requirements.lock pin, whichever pubkit is installed, if any.
 #
 #   ./pubkit sync --check
-#   ./pubkit dns check example.eu
 #
 # uvx fetches that release's wheel once and keeps it in uv's cache; nothing
 # is installed into the repository or the system. pubkit runs in the
@@ -19,7 +18,7 @@
 set -euo pipefail
 
 if ! command -v uvx >/dev/null 2>&1; then
-  echo "pubkit: ./pubkit runs pubkit 0.34.0 with uv, which is not installed: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+  echo "pubkit: ./pubkit runs pubkit 0.35.0 with uv, which is not installed: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
   exit 127
 fi
 
@@ -44,7 +43,7 @@ fetch() {
 }
 
 # pubkit's own wheel, by the sha256 tests/requirements.lock pins, from the mirror when GitHub fails.
-from="https://github.com/Sustenaut/pubkit/releases/download/v0.34.0/pubkit-0.34.0-py3-none-any.whl"
+from="https://github.com/Sustenaut/pubkit/releases/download/v0.35.0/pubkit-0.35.0-py3-none-any.whl"
 pin=$(sed -n "\#^pubkit @ $from#,/--hash=sha256:/s/.*--hash=sha256:\([0-9a-f]\{64\}\).*/\1/p" tests/requirements.lock 2>/dev/null | head -n 1)
 if [ -n "$pin" ]; then
   fetch "$from" "$pin" wheels tests/requirements.lock
