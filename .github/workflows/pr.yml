@@ -14,7 +14,7 @@ jobs:
   # jobs it ran are skipped, and nothing here tests less than it did.
   tested:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-tested.yml@ec25e7ea8a86d688a626b0326fb131c11b6da081 # v0.36.0
+    uses: Sustenaut/pubkit/.github/workflows/job-tested.yml@c502c3d3969ac75ec9a411c284e49f01c5a93558 # v0.37.0
     with: {"workflow": ".github/workflows/pr.yml"}
     permissions:
       actions: read
@@ -24,21 +24,21 @@ jobs:
     name: ci
     needs: [tested]
     if: ${{ needs.tested.outputs.tested != 'true' }}
-    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@ec25e7ea8a86d688a626b0326fb131c11b6da081 # v0.36.0
+    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@c502c3d3969ac75ec9a411c284e49f01c5a93558 # v0.37.0
     with: {"shellcheck": "with-secrets mirror/*.sh scripts/*.sh"}
 
   tests:
     name: ci
     needs: [tested]
     if: ${{ needs.tested.outputs.tested != 'true' }}
-    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@ec25e7ea8a86d688a626b0326fb131c11b6da081 # v0.36.0
+    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@c502c3d3969ac75ec9a411c284e49f01c5a93558 # v0.37.0
     with: {"setup": "npm ci", "test": "npm test"}
 
   sonar:
     name: ci
     needs: [tested, tests]
     if: ${{ github.event_name != 'merge_group' && needs.tested.outputs.tested != 'true' }}
-    uses: Sustenaut/pubkit/.github/workflows/job-sonar.yml@ec25e7ea8a86d688a626b0326fb131c11b6da081 # v0.36.0
+    uses: Sustenaut/pubkit/.github/workflows/job-sonar.yml@c502c3d3969ac75ec9a411c284e49f01c5a93558 # v0.37.0
     with: {"reports": "sonar.python.coverage.reportPaths=*.xml sonar.javascript.lcov.reportPaths=lcov.info"}
     secrets: { SONAR_TOKEN: '${{ secrets.SONAR_TOKEN }}' }
 
