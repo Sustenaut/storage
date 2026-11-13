@@ -363,5 +363,19 @@
     "delete": [
       "k8s:integrations/ingest"
     ]
+  },
+  "pubkit-checks": {
+    "private": true,
+    "inbox": true,
+    "read": [
+      "k8s:integrations/ingest"
+    ],
+    "write": [
+      "github:Sustenaut/release-controlplane@refs/heads/main",
+      "k8s:integrations/ingest"
+    ],
+    "delete": [
+      "k8s:integrations/ingest"
+    ]
   }
 }
