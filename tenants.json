@@ -377,5 +377,36 @@
     "delete": [
       "k8s:integrations/ingest"
     ]
+  },
+  "ci-usage": {
+    "private": true,
+    "inbox": true,
+    "read": [
+      "k8s:integrations/ingest"
+    ],
+    "write": [
+      "k8s:integrations/ci-jobs",
+      "k8s:ci/usage",
+      "k8s:integrations/ingest"
+    ],
+    "delete": [
+      "k8s:integrations/ingest"
+    ]
+  },
+  "ci-jobs": {
+    "private": true,
+    "heads": true,
+    "read": [
+      "k8s:integrations/ci-jobs"
+    ],
+    "write": [
+      "k8s:integrations/ci-jobs"
+    ],
+    "files": {
+      "types": [
+        "json"
+      ],
+      "max_bytes": 1048576
+    }
   }
 }
