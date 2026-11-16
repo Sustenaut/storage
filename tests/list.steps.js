@@ -14,6 +14,9 @@ After("@list", async function () {
   nodeMock.restoreAll();
 });
 
+// Strings in the order Array.prototype.sort gives them by default, said outright.
+const byCodeUnit = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
 
 // As R2 lists: in key order, a page at a time, with a cursor, metadata only if asked.
 function bucket() {
@@ -119,7 +122,7 @@ Then("a listing comes a page at a time, and a prefix narrows it to an id or a na
   assert.ok(first.cursor);
   const next = await (await call(`/deals/list?prefix=f/&limit=2&cursor=${first.cursor}`)).json();
   assert.deepEqual([next.files.length, next.cursor], [1, null]);
-  assert.deepEqual([...first.files, ...next.files].map((f) => f.id).sort(), [...ids].sort());
+  assert.deepEqual([...first.files, ...next.files].map((f) => f.id).sort(byCodeUnit), [...ids].sort(byCodeUnit));
   const one = await (await call(`/deals/list?prefix=f/${ids[0]}/`)).json();
   assert.deepEqual(one.files.map((f) => f.id), [ids[0]]);
   assert.equal((await call(`/deals/list?prefix=f/${ids[0].slice(0, 6)}`)).status, 200);

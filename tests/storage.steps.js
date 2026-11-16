@@ -16,6 +16,9 @@ After("@storage", async function () {
   nodeMock.restoreAll();
 });
 
+// Strings in the order Array.prototype.sort gives them by default, said outright.
+const byCodeUnit = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
 
 // A JPEG's first bytes, with a start-of-frame giving its size.
 function jpeg(width, height, extra = 0) {
@@ -114,7 +117,7 @@ Then("an editor's upload is stored and named by its content", function () {
   const photo = await response.json();
   assert.match(photo.id, /^[0-9a-f]{16}$/);
   assert.deepEqual({ ...photo, id: "" }, { id: "", width: 960, height: 720, widths: [480, 960], formats: ["webp", "jpg"] });
-  assert.deepEqual([...env.STORAGE.objects.keys()].sort(), ["480.jpg", "480.webp", "960.jpg", "960.webp"].map((n) => `visit-ee/p/${photo.id}/${n}`));
+  assert.deepEqual([...env.STORAGE.objects.keys()].sort(byCodeUnit), ["480.jpg", "480.webp", "960.jpg", "960.webp"].map((n) => `visit-ee/p/${photo.id}/${n}`));
   assert.equal(env.STORAGE.objects.get(`visit-ee/p/${photo.id}/960.jpg`).customMetadata.by, "schryer");
 
   const served = await call(new Request(`https://storage.example/visit-ee/p/${photo.id}/960.jpg`));
@@ -153,7 +156,7 @@ Then("the clean-up deletes old photos no place uses, and nothing else", function
   sitePhotos = ["aaaaaaaaaaaaaaaa"];
   const result = await clean(env, TENANTS, now);
   assert.deepEqual(result["visit-ee"].deleted, ["visit-ee/p/bbbbbbbbbbbbbbbb/480.jpg"]);
-  assert.deepEqual([...env.STORAGE.objects.keys()].sort(), ["visit-ee/p/aaaaaaaaaaaaaaaa/480.jpg", "visit-ee/p/cccccccccccccccc/480.jpg"]);
+  assert.deepEqual([...env.STORAGE.objects.keys()].sort(byCodeUnit), ["visit-ee/p/aaaaaaaaaaaaaaaa/480.jpg", "visit-ee/p/cccccccccccccccc/480.jpg"]);
 
   // An empty list while photos exist looks like a broken site: keep all.
   sitePhotos = [];
@@ -279,7 +282,7 @@ Then("kept files are never cleaned, others are cleaned like photos, and only whe
   inUse = { photos: [], files: [a] };
   const tenants = { opportunity: TENANTS.opportunity };
   assert.deepEqual((await clean(env, tenants, now)).opportunity, { deleted: [`opportunity/f/${b}/unused.pdf`] });
-  assert.deepEqual([...env.STORAGE.objects.keys()].sort(), [a, c, d].map((id, i) => `opportunity/f/${id}/${["used.pdf", "sent-to-client.pdf", "new.pdf"][i]}`).sort());
+  assert.deepEqual([...env.STORAGE.objects.keys()].sort(byCodeUnit), [a, c, d].map((id, i) => `opportunity/f/${id}/${["used.pdf", "sent-to-client.pdf", "new.pdf"][i]}`).sort(byCodeUnit));
 
   // No "files" key: files are never cleaned.
   inUse = { photos: [] };

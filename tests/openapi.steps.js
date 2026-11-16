@@ -16,6 +16,9 @@ After("@openapi", async function () {
   nodeMock.restoreAll();
 });
 
+// Strings in the order Array.prototype.sort gives them by default, said outright.
+const byCodeUnit = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
 
 const METHODS = ["get", "put", "post", "delete", "head", "patch", "options", "trace"];
 const operations = Object.entries(SPEC.paths).flatMap(([path, item]) =>
@@ -61,7 +64,7 @@ Then("the spec is OpenAPI 3.1, every reference resolves, and every operation is 
     // Every {name} in the path is a required path parameter, and nothing else is.
     const params = [...(item.parameters || []), ...(op.parameters || [])].map((p) => (p.$ref ? resolve(p.$ref) : p));
     const inPath = params.filter((p) => p.in === "path");
-    assert.deepEqual(inPath.map((p) => p.name).sort(), [...path.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort(), where);
+    assert.deepEqual(inPath.map((p) => p.name).sort(byCodeUnit), [...path.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort(byCodeUnit), where);
     for (const p of inPath) assert.ok(p.required && p.schema && p.example !== undefined, `${where} ${p.name}`);
   }
 })();
@@ -73,7 +76,7 @@ Then("the spec has every route the header of src\\/storage.js lists, and no othe
   const header = source.slice(0, source.indexOf("\nimport "));
   const listed = [...header.matchAll(/^\/\/ {3}([A-Z]+(?:,[A-Z]+)*) (\/\S*)/gm)].flatMap(([, methods, path]) => methods.split(",").map((m) => `${m} ${path}`));
   assert.ok(listed.length > 10);
-  assert.deepEqual(operations.map((o) => `${o.method} ${o.path}`).sort(), [...new Set(listed)].sort());
+  assert.deepEqual(operations.map((o) => `${o.method} ${o.path}`).sort(byCodeUnit), [...new Set(listed)].sort(byCodeUnit));
 })();
 });
 
