@@ -1,8 +1,19 @@
 // A private tenant's files, listed for its readers a page at a time, with what their
 // uploads said of them, such as a subject.
-import { test, beforeEach, afterEach } from "node:test";
+import { After, Before, Then } from "@cucumber/cucumber";
+import { mock as nodeMock } from "node:test";
 import assert from "node:assert/strict";
 import { handle, allowedCache } from "../src/storage.js";
+
+// What node:test gave each test as `t`: its mocks, restored when the
+// scenario ends, and the cleanups it registers with t.after().
+const cleanups = [];
+const scenarioContext = { mock: nodeMock, after: (fn) => cleanups.push(fn) };
+After("@list", async function () {
+  while (cleanups.length) await cleanups.pop()();
+  nodeMock.restoreAll();
+});
+
 
 // As R2 lists: in key order, a page at a time, with a cursor, metadata only if asked.
 function bucket() {
@@ -35,7 +46,8 @@ const TENANTS = {
 };
 
 let env, realFetch;
-beforeEach(() => {
+Before("@list", function () {
+  return (() => {
   env = { STORAGE: bucket() };
   allowedCache.entries.clear();
   realFetch = globalThis.fetch;
@@ -48,8 +60,11 @@ beforeEach(() => {
     if (String(url) === "https://api.github.com/user") return Response.json({ login: "an-editor" });
     throw new Error(`unexpected fetch ${url}`);
   };
+})(scenarioContext);
 });
-afterEach(() => (globalThis.fetch = realFetch));
+After("@list", function () {
+  return (() => (globalThis.fetch = realFetch))(scenarioContext);
+});
 
 const call = (path, { token = "editor", method = "GET", body } = {}) =>
   handle(new Request(`https://storage.example${path}`, { method, body, headers: token ? { Authorization: `Bearer ${token}` } : {} }), env, TENANTS);
@@ -63,7 +78,8 @@ async function send(name, fields = {}, token = "editor") {
   return call("/deals/files", { method: "POST", body: form, token });
 }
 
-test("a reader lists the tenant's files with what their uploads said, and an upload may name its subject", async () => {
+Then("a reader lists the tenant's files with what their uploads said, and an upload may name its subject", function () {
+  return (async () => {
   const sent = await (await send("offer.pdf", { label: "The offer", subject: "card-42", kept: "true" })).json();
   assert.equal(sent.subject, "card-42");
   await send("notes.pdf");
@@ -80,18 +96,22 @@ test("a reader lists the tenant's files with what their uploads said, and an upl
   });
   assert.deepEqual(files.find((f) => f.name === "notes.pdf").metadata, { kept: "false", by: "an-editor" });
   assert.deepEqual(env.STORAGE.asked.at(-1), { prefix: "deals/f/", limit: 1000, include: ["customMetadata"] });
+})(scenarioContext);
 });
 
-test("a subject is cut to the label's length, and kept only when given", async () => {
+Then("a subject is cut to the label's length, and kept only when given", function () {
+  return (async () => {
   const long = "s".repeat(250);
   const sent = await (await send("a.pdf", { subject: `  ${long}  ` })).json();
   assert.equal(sent.subject, "s".repeat(200));
   assert.equal(env.STORAGE.objects.get(`deals/f/${sent.id}/a.pdf`).customMetadata.subject, "s".repeat(200));
   const plain = await (await send("b.pdf")).json();
   assert.equal(env.STORAGE.objects.get(`deals/f/${plain.id}/b.pdf`).customMetadata.subject, undefined);
+})(scenarioContext);
 });
 
-test("a listing comes a page at a time, and a prefix narrows it to an id or a name", async () => {
+Then("a listing comes a page at a time, and a prefix narrows it to an id or a name", function () {
+  return (async () => {
   const ids = [];
   for (const n of ["a", "b", "c"]) ids.push((await (await send(`${n}.pdf`)).json()).id);
   const first = await (await call("/deals/list?prefix=f/&limit=2")).json();
@@ -103,15 +123,19 @@ test("a listing comes a page at a time, and a prefix narrows it to an id or a na
   const one = await (await call(`/deals/list?prefix=f/${ids[0]}/`)).json();
   assert.deepEqual(one.files.map((f) => f.id), [ids[0]]);
   assert.equal((await call(`/deals/list?prefix=f/${ids[0].slice(0, 6)}`)).status, 200);
+})(scenarioContext);
 });
 
-test("only a reader lists: no token, or a token that can't push, is refused", async () => {
+Then("only a reader lists: no token, or a token that can't push, is refused", function () {
+  return (async () => {
   assert.equal((await call("/deals/list?prefix=f/", { token: null })).status, 401);
   assert.equal((await call("/deals/list?prefix=f/", { token: "reader-only" })).status, 403);
   assert.equal((await call("/deals/list?prefix=f/", { token: "nobody" })).status, 403);
+})(scenarioContext);
 });
 
-test("a prefix outside f/, a bad one, or a bad limit is refused", async () => {
+Then("a prefix outside f\\/, a bad one, or a bad limit is refused", function () {
+  return (async () => {
   for (const q of ["prefix=", "prefix=inbox/", "prefix=f/../", "prefix=f/xyz", `prefix=f/${"a".repeat(65)}`, `prefix=f/${"a".repeat(64)}/../x`, "prefix=f/&limit=0", "prefix=f/&limit=1001", "prefix=f/&limit=x"]) {
     const status = (await call(`/deals/list?${q}`)).status;
     assert.ok(status === 400 || status === 404, `${q}: ${status}`);
@@ -119,13 +143,16 @@ test("a prefix outside f/, a bad one, or a bad limit is refused", async () => {
   }
   assert.equal((await call("/deals/list?prefix=f/&limit=1001")).status, 400);
   assert.equal((await call("/deals/list?prefix=f/xyz")).status, 400);
+})(scenarioContext);
 });
 
-test("a public tenant is never listed, nor a private one's files without \"files\"", async () => {
+Then("a public tenant is never listed, nor a private one's files without \"files\"", function () {
+  return (async () => {
   assert.equal((await call("/open/list?prefix=f/")).status, 404);
   assert.equal((await call("/closed/list?prefix=f/")).status, 404);
   // A buffer without files still takes only its folders.
   const buffer = await call("/calls/list?prefix=f/", { token: null });
   assert.equal(buffer.status, 401);
   assert.equal(env.STORAGE.asked.length, 0);
+})(scenarioContext);
 });

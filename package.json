@@ -6,7 +6,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "test": "mkdir -p coverage && node --test --experimental-test-coverage --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info tests/*.test.js",
+    "test": "c8 --reporter=lcov --reporter=text-summary --reports-dir=coverage --include='src/**' --include='functions/**' cucumber-js",
     "dev": "wrangler pages dev public --r2 STORAGE",
     "deploy": "wrangler pages deploy public --project-name sustenaut-storage --branch main"
   },
@@ -14,6 +14,12 @@
     "@sustenaut/integrations": "github:Sustenaut/integrations#v0.14.1"
   },
   "devDependencies": {
+    "@cucumber/cucumber": "13.3.0",
+    "c8": "12.0.0",
     "wrangler": "4.156.0"
+  },
+  "overrides": {
+    "glob": "14.0.6",
+    "minimatch": "11.0.8"
   }
 }

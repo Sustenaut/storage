@@ -1,13 +1,24 @@
 // The mirrors' indexes (src/storage.js): Terraform's provider network mirror, from the
 // archives a tenant with "providers" keeps, and a simple repository index (PEP 503) of
 // a tenant with "simple", with GitHub's OIDC issuer answered here.
-import { test, beforeEach, afterEach } from "node:test";
+import { After, Before, Then } from "@cucumber/cucumber";
+import { mock as nodeMock } from "node:test";
 import assert from "node:assert/strict";
 import { handle, byVersion } from "../src/storage.js";
 import { forgetKeys } from "../src/jwt.js";
 import REAL_TENANTS from "../tenants.json" with { type: "json" };
 
 import { JWKS, publicJwk, token } from "./oidc.js";
+
+// What node:test gave each test as `t`: its mocks, restored when the
+// scenario ends, and the cleanups it registers with t.after().
+const cleanups = [];
+const scenarioContext = { mock: nodeMock, after: (fn) => cleanups.push(fn) };
+After("@providers", async function () {
+  while (cleanups.length) await cleanups.pop()();
+  nodeMock.restoreAll();
+});
+
 
 // A bucket that lists two objects a page, so the index reads every page.
 function bucket() {
@@ -37,7 +48,8 @@ async function put(name, subject, bytes = zip(1), bearer, tenant = "terraform") 
 const get = (path, method = "GET") => call(new Request(`${ORIGIN}${path}`, { method }));
 
 let env, realFetch;
-beforeEach(() => {
+Before("@providers", function () {
+  return (() => {
   env = { STORAGE: bucket() };
   forgetKeys();
   realFetch = globalThis.fetch;
@@ -45,10 +57,14 @@ beforeEach(() => {
     if (String(url) === JWKS) return Response.json({ keys: [publicJwk] });
     throw new Error(`unexpected fetch ${url}`);
   };
+})(scenarioContext);
 });
-afterEach(() => (globalThis.fetch = realFetch));
+After("@providers", function () {
+  return (() => (globalThis.fetch = realFetch))(scenarioContext);
+});
 
-test("the terraform tenant is public, kept, never cleaned, serves the mirror protocol, and only storage's own main writes it", () => {
+Then("the terraform tenant is public, kept, never cleaned, serves the mirror protocol, and only storage's own main writes it", function () {
+  return (() => {
   const t = REAL_TENANTS.terraform;
   assert.equal(t.private, undefined);
   assert.equal(t.repository, undefined);
@@ -56,9 +72,11 @@ test("the terraform tenant is public, kept, never cleaned, serves the mirror pro
   assert.deepEqual(t.write, ["github:Sustenaut/storage@refs/heads/main"]);
   assert.deepEqual(t.files, { types: ["zip"], max_bytes: 104857600, kept: true });
   assert.equal(t.in_use, undefined);
+})(scenarioContext);
 });
 
-test("index.json lists the versions mirrored, and <version>.json their archives with the zh: hash a lock pins", async () => {
+Then("index.json lists the versions mirrored, and <version>.json their archives with the zh: hash a lock pins", function () {
+  return (async () => {
   const google = "registry.terraform.io/hashicorp/google";
   for (const [name, n] of [
     ["terraform-provider-google_7.0.0_linux_amd64.zip", 1],
@@ -89,9 +107,11 @@ test("index.json lists the versions mirrored, and <version>.json their archives 
   assert.equal((await get("/terraform/registry.terraform.io/hashicorp/google/5.0.0.json")).status, 404);
   assert.deepEqual(await (await get("/terraform/registry.terraform.io/hashicorp/nothing/index.json")).json(), { versions: {} });
   assert.equal((await get("/terraform/registry.terraform.io/hashicorp/google/index.json", "HEAD")).status, 200);
+})(scenarioContext);
 });
 
-test("an archive is taken only named as a provider release names it, under its provider's address", async () => {
+Then("an archive is taken only named as a provider release names it, under its provider's address", function () {
+  return (async () => {
   const google = "registry.terraform.io/hashicorp/google";
   assert.equal((await put("google.zip", google)).status, 400);
   assert.equal((await put("terraform-provider-google_7.0.0_linux_amd64.zip", undefined)).status, 400, "no subject");
@@ -100,13 +120,17 @@ test("an archive is taken only named as a provider release names it, under its p
   assert.equal((await put("terraform-provider-google_7.0.0_linux_amd64.zip", google, new TextEncoder().encode("not a zip"))).status, 400);
   assert.equal((await put("terraform-provider-google_7.0.0_linux_amd64.zip", google, zip(1), await token("Sustenaut/business-plan"))).status, 403);
   assert.equal(env.STORAGE.objects.size, 0);
+})(scenarioContext);
 });
 
-test("a tenant without providers has no mirror routes", async () => {
+Then("a tenant without providers has no mirror routes", function () {
+  return (async () => {
   assert.equal((await get("/wheels/registry.terraform.io/hashicorp/google/index.json")).status, 404);
+})(scenarioContext);
 });
 
-test("versions are listed in release order, not as text", async () => {
+Then("versions are listed in release order, not as text", function () {
+  return (async () => {
   assert.deepEqual(["10.0.0", "9.1.0", "9.0.10", "9.0.9", "10.0.0-beta1", "10.0.0-alpha2"].sort(byVersion),
     ["9.0.9", "9.0.10", "9.1.0", "10.0.0-alpha2", "10.0.0-beta1", "10.0.0"]);
   assert.equal(byVersion("1.2.3", "1.2.3"), 0);
@@ -114,9 +138,11 @@ test("versions are listed in release order, not as text", async () => {
     assert.equal((await put(name, "registry.terraform.io/hashicorp/tls", zip(n))).status, 200);
   const { versions } = await (await get("/terraform/registry.terraform.io/hashicorp/tls/index.json")).json();
   assert.deepEqual(Object.keys(versions), ["9.0.0", "10.0.0"]);
+})(scenarioContext);
 });
 
-test("the pypi tenant is public, kept, never cleaned, serves a simple index, and only storage's own main writes it", () => {
+Then("the pypi tenant is public, kept, never cleaned, serves a simple index, and only storage's own main writes it", function () {
+  return (() => {
   const t = REAL_TENANTS.pypi;
   assert.equal(t.private, undefined);
   assert.equal(t.repository, undefined);
@@ -124,9 +150,11 @@ test("the pypi tenant is public, kept, never cleaned, serves a simple index, and
   assert.deepEqual(t.write, ["github:Sustenaut/storage@refs/heads/main"]);
   assert.deepEqual(t.files, { types: ["whl", "gz", "zip"], max_bytes: 104857600, kept: true });
   assert.equal(t.in_use, undefined);
+})(scenarioContext);
 });
 
-test("a project's simple index links each of its files, with the sha256 a lock pins", async () => {
+Then("a project's simple index links each of its files, with the sha256 a lock pins", function () {
+  return (async () => {
   const pkg = (name, subject, n) => put(name, subject, n === undefined ? zip(9) : zip(n), undefined, "pypi");
   assert.equal((await pkg("PyYAML-6.0.3-cp314-cp314-manylinux_2_17_x86_64.whl", "pyyaml", 1)).status, 200);
   assert.equal((await pkg("pyyaml-6.0.3.tar.gz", "pyyaml", 2)).status, 400, "a .gz must be gzip");
@@ -147,13 +175,16 @@ test("a project's simple index links each of its files, with the sha256 a lock p
   assert.equal((await get("/pypi/simple/nothing/")).status, 404);
   assert.equal((await get("/pypi/simple/pyyaml/", "HEAD")).status, 200);
   assert.equal((await get("/terraform/simple/pyyaml/")).status, 404, "only a tenant with simple has an index");
+})(scenarioContext);
 });
 
-test("a package's file is taken only under its project's normalized name", async () => {
+Then("a package's file is taken only under its project's normalized name", function () {
+  return (async () => {
   const pkg = (name, subject) => put(name, subject, zip(1), undefined, "pypi");
   assert.equal((await pkg("pytest-9.0.3-py3-none-any.whl", undefined)).status, 400, "no subject");
   assert.equal((await pkg("pytest-9.0.3-py3-none-any.whl", "PyTest")).status, 400, "not normalized");
   assert.equal((await pkg("pytest-9.0.3-py3-none-any.whl", "pyyaml")).status, 400, "another project");
   assert.equal((await pkg("pytest_bdd-8.1.0-py3-none-any.whl", "pytest")).status, 400, "a name is matched whole");
   assert.equal(env.STORAGE.objects.size, 0);
+})(scenarioContext);
 });

@@ -1,10 +1,21 @@
 // The storage service (src/storage.js), with an R2 bucket in memory and
 // GitHub answered here.
-import { test, beforeEach, afterEach } from "node:test";
+import { After, Before, Then } from "@cucumber/cucumber";
+import { mock as nodeMock } from "node:test";
 import assert from "node:assert/strict";
 import { handle, clean, jpegSize, allowedCache, callLog } from "../src/storage.js";
 import { POLICIES } from "@sustenaut/integrations/caller.js";
 import REAL_TENANTS from "../tenants.json" with { type: "json" };
+
+// What node:test gave each test as `t`: its mocks, restored when the
+// scenario ends, and the cleanups it registers with t.after().
+const cleanups = [];
+const scenarioContext = { mock: nodeMock, after: (fn) => cleanups.push(fn) };
+After("@storage", async function () {
+  while (cleanups.length) await cleanups.pop()();
+  nodeMock.restoreAll();
+});
+
 
 // A JPEG's first bytes, with a start-of-frame giving its size.
 function jpeg(width, height, extra = 0) {
@@ -45,7 +56,8 @@ const TENANTS = {
 const call = (request) => handle(request, env, TENANTS);
 
 let env, realFetch, sitePhotos, canPush, inUse, appRepos, clock, asked;
-beforeEach(() => {
+Before("@storage", function () {
+  return (() => {
   env = { STORAGE: bucket() };
   clock = Date.parse("2026-11-01T00:00:00Z");
   allowedCache.now = () => clock;
@@ -80,8 +92,11 @@ beforeEach(() => {
     if (url === "https://opportunity.sustenaut.eu/storage-in-use.json") return Response.json(inUse);
     throw new Error(`unexpected fetch ${url}`);
   };
+})(scenarioContext);
 });
-afterEach(() => (globalThis.fetch = realFetch));
+After("@storage", function () {
+  return (() => (globalThis.fetch = realFetch))(scenarioContext);
+});
 
 function upload(token, parts) {
   const form = new FormData();
@@ -91,7 +106,8 @@ function upload(token, parts) {
   );
 }
 
-test("an editor's upload is stored and named by its content", async () => {
+Then("an editor's upload is stored and named by its content", function () {
+  return (async () => {
   const response = await upload("good", { "480.jpg": jpeg(480, 360), "960.jpg": jpeg(960, 720), "480.webp": webp(), "960.webp": webp() });
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("Access-Control-Allow-Origin"), "https://temp.schryer.eu");
@@ -105,24 +121,30 @@ test("an editor's upload is stored and named by its content", async () => {
   assert.equal(served.status, 200);
   assert.equal(served.headers.get("Content-Type"), "image/jpeg");
   assert.match(served.headers.get("Cache-Control"), /immutable/);
+})(scenarioContext);
 });
 
-test("only someone who may push to the repository can upload", async () => {
+Then("only someone who may push to the repository can upload", function () {
+  return (async () => {
   assert.equal((await upload("bad", { "480.jpg": jpeg(480, 360) })).status, 403);
   canPush = false;
   assert.equal((await upload("good", { "480.jpg": jpeg(480, 360) })).status, 403);
   assert.equal((await upload("", { "480.jpg": jpeg(480, 360) })).status, 401);
   assert.equal(env.STORAGE.objects.size, 0);
+})(scenarioContext);
 });
 
-test("an upload must be photos of allowed sizes", async () => {
+Then("an upload must be photos of allowed sizes", function () {
+  return (async () => {
   assert.equal((await upload("good", { "480.jpg": new TextEncoder().encode("<svg/>") })).status, 400);
   assert.equal((await upload("good", { "4000.jpg": jpeg(4000, 3000) })).status, 400);
   assert.equal((await upload("good", { "evil.html": jpeg(480, 360) })).status, 400);
   assert.equal((await upload("good", { "480.jpg": jpeg(480, 360, Math.ceil(3.1 * 1024 * 1024)) })).status, 413);
+})(scenarioContext);
 });
 
-test("the clean-up deletes old photos no place uses, and nothing else", async () => {
+Then("the clean-up deletes old photos no place uses, and nothing else", function () {
+  return (async () => {
   const day = 86400e3, now = Date.parse("2026-12-01T00:00:00Z");
   const put = (id, daysOld) => env.STORAGE.put(`visit-ee/p/${id}/480.jpg`, jpeg(480, 360), { customMetadata: { uploaded: new Date(now - daysOld * day).toISOString() } });
   await put("aaaaaaaaaaaaaaaa", 90); // in use
@@ -136,18 +158,23 @@ test("the clean-up deletes old photos no place uses, and nothing else", async ()
   // An empty list while photos exist looks like a broken site: keep all.
   sitePhotos = [];
   assert.match((await clean(env, TENANTS, now + 365 * day))["visit-ee"].skipped, /lists no photos/);
+})(scenarioContext);
 });
 
-test("a JPEG's size comes from its frame header", () => {
+Then("a JPEG's size comes from its frame header", function () {
+  return (() => {
   assert.deepEqual(jpegSize(jpeg(1600, 1067)), { width: 1600, height: 1067 });
+})(scenarioContext);
 });
 
-test("the clean-up runs once a day however often it is called, and other sites' paths are unknown", async () => {
+Then("the clean-up runs once a day however often it is called, and other sites' paths are unknown", function () {
+  return (async () => {
   sitePhotos = ["aaaaaaaaaaaaaaaa"];
   assert.equal((await call(new Request("https://storage.example/_clean", { method: "POST" }))).status, 200);
   assert.equal((await call(new Request("https://storage.example/_clean", { method: "POST" }))).status, 429);
   assert.equal((await call(new Request("https://storage.example/elsewhere/p/aaaaaaaaaaaaaaaa/480.jpg"))).status, 404);
   assert.equal((await call(new Request("https://storage.example/visit-ee/p/aaaaaaaaaaaaaaaa/480.jpg"))).status, 404);
+})(scenarioContext);
 });
 
 // --- Files -------------------------------------------------------------------
@@ -163,7 +190,8 @@ function sendFile(token, bytes, fields = {}, tenant = "opportunity") {
   return call(new Request(`https://storage.example/${tenant}/files`, { method: "POST", body: form, headers: { Authorization: `Bearer ${token}` } }));
 }
 
-test("a file is stored under its content's SHA-256 and served with its type, for good", async () => {
+Then("a file is stored under its content's SHA-256 and served with its type, for good", function () {
+  return (async () => {
   const response = await sendFile("good", pdf(), { name: "market-report.pdf", label: "OPP-02 market report v3" });
   assert.equal(response.status, 200);
   const file = await response.json();
@@ -187,9 +215,11 @@ test("a file is stored under its content's SHA-256 and served with its type, for
   const got = await call(new Request(`https://storage.example${deck.url}`));
   assert.equal(got.headers.get("Content-Type"), "application/vnd.openxmlformats-officedocument.presentationml.presentation");
   assert.match(got.headers.get("Content-Disposition"), /^attachment/);
+})(scenarioContext);
 });
 
-test("files must be of a type the tenant allows, look like it, and fit", async () => {
+Then("files must be of a type the tenant allows, look like it, and fit", function () {
+  return (async () => {
   assert.equal((await sendFile("good", pdf(), { name: "page.html" })).status, 415);
   assert.equal((await sendFile("good", pdf(), { name: "notes.docx" })).status, 415); // a known type this tenant doesn't take
   assert.equal((await sendFile("good", svg(), { name: "fake.pdf" })).status, 400); // wrong magic bytes
@@ -202,17 +232,21 @@ test("files must be of a type the tenant allows, look like it, and fit", async (
   // A tenant without "files" refuses them, and doesn't serve the path either.
   assert.equal((await sendFile("good", pdf(), { name: "a.pdf" }, "visit-ee")).status, 404);
   assert.equal((await call(new Request(`https://storage.example/visit-ee/f/${"a".repeat(64)}/a.pdf`))).status, 404);
+})(scenarioContext);
 });
 
-test("only someone who may push to the tenant's repository can upload a file", async () => {
+Then("only someone who may push to the tenant's repository can upload a file", function () {
+  return (async () => {
   assert.equal((await sendFile("", pdf(), { name: "a.pdf" })).status, 401);
   assert.equal((await sendFile("bad", pdf(), { name: "a.pdf" })).status, 403);
   canPush = false;
   assert.equal((await sendFile("good", pdf(), { name: "a.pdf" })).status, 403);
   assert.equal(env.STORAGE.objects.size, 0);
+})(scenarioContext);
 });
 
-test("a GitHub App installation token uploads when its installation can write to the repository", async () => {
+Then("a GitHub App installation token uploads when its installation can write to the repository", function () {
+  return (async () => {
   const response = await sendFile("ghs_app", pdf(), { name: "offer.pdf", kept: "true", for: "david@example.org" });
   assert.equal(response.status, 200);
   const file = await response.json();
@@ -229,9 +263,11 @@ test("a GitHub App installation token uploads when its installation can write to
   assert.equal((await sendFile("ghs_app", pdf("2"), { name: "b.pdf" })).status, 403);
   appRepos = [{ full_name: "schryer/visit-ee", permissions: { admin: false, push: true, pull: true } }];
   assert.equal((await sendFile("ghs_app", pdf("3"), { name: "c.pdf" })).status, 403);
+})(scenarioContext);
 });
 
-test("kept files are never cleaned, others are cleaned like photos, and only when the list names files", async () => {
+Then("kept files are never cleaned, others are cleaned like photos, and only when the list names files", function () {
+  return (async () => {
   const day = 86400e3, now = Date.parse("2026-12-01T00:00:00Z");
   const put = (id, name, daysOld, kept = false) =>
     env.STORAGE.put(`opportunity/f/${id}/${name}`, pdf(), { customMetadata: { uploaded: new Date(now - daysOld * day).toISOString(), kept: String(kept) } });
@@ -252,17 +288,21 @@ test("kept files are never cleaned, others are cleaned like photos, and only whe
   inUse = { photos: [], files: [] };
   assert.match((await clean(env, tenants, now + 365 * day)).opportunity.skipped, /lists no files/);
   assert.equal(env.STORAGE.objects.size, 3);
+})(scenarioContext);
 });
 
-test("a kept file stays kept when the same file is uploaded again", async () => {
+Then("a kept file stays kept when the same file is uploaded again", function () {
+  return (async () => {
   const first = await (await sendFile("good", pdf(), { name: "offer.pdf", kept: "true" })).json();
   const again = await (await sendFile("good", pdf(), { name: "offer.pdf" })).json();
   assert.equal(again.id, first.id);
   assert.equal(again.kept, true);
   assert.equal(env.STORAGE.objects.get(`opportunity/f/${first.id}/offer.pdf`).customMetadata.kept, "true");
+})(scenarioContext);
 });
 
-test("the opportunity tenant takes the files the opportunity site needs", () => {
+Then("the opportunity tenant takes the files the opportunity site needs", function () {
+  return (() => {
   const t = REAL_TENANTS.opportunity;
   assert.equal(t.private, true);
   assert.deepEqual(t.read, ["k8s:opportunity/app"]);
@@ -270,6 +310,7 @@ test("the opportunity tenant takes the files the opportunity site needs", () => 
   assert.deepEqual(t.origins, ["https://opportunity.sustenaut.eu"]);
   assert.deepEqual(t.files.types, ["pdf", "pptx", "docx", "png", "jpg", "svg", "csv", "xlsx"]);
   assert.equal(REAL_TENANTS["visit-ee"].files, undefined); // photos only
+})(scenarioContext);
 });
 
 // --- Sources -----------------------------------------------------------------
@@ -284,7 +325,8 @@ const sources = (token, bytes, fields) => {
 // A publet object starts with a CBOR map: 0xa0 to 0xbf.
 const cbor = () => new Uint8Array([0xa3, 0x61, 0x76, 0x01, 0x61, 0x6b, 0x02, 0x61, 0x64, 0x03]);
 
-test("a sources tenant keeps papers, publet objects and their index, all kept", async () => {
+Then("a sources tenant keeps papers, publet objects and their index, all kept", function () {
+  return (async () => {
   const object = await (await sources("good", cbor(), { name: "bafy-claim.cbor" })).json();
   assert.equal(object.kept, true);
   assert.equal(env.STORAGE.objects.get(`sources/f/${object.id}/bafy-claim.cbor`).customMetadata.kept, "true");
@@ -298,25 +340,31 @@ test("a sources tenant keeps papers, publet objects and their index, all kept", 
   const shown = await handle(new Request(`https://storage.example${index.url}`), env, { sources: SOURCES });
   assert.equal(shown.headers.get("Content-Type"), "application/json");
   assert.match(shown.headers.get("Content-Disposition"), /^inline/);
+})(scenarioContext);
 });
 
-test("a cbor file must be a CBOR map and a json file must parse", async () => {
+Then("a cbor file must be a CBOR map and a json file must parse", function () {
+  return (async () => {
   assert.equal((await sources("good", new Uint8Array([]), { name: "empty.cbor" })).status, 400);
   assert.equal((await sources("good", new Uint8Array([0x83, 1, 2, 3]), { name: "array.cbor" })).status, 400); // an array, not a map
   assert.equal((await sources("good", new TextEncoder().encode("{not json"), { name: "bad.json" })).status, 400);
   assert.equal((await sources("good", new Uint8Array([0x7b, 0xff, 0x7d]), { name: "bytes.json" })).status, 400); // not UTF-8
   assert.equal((await sources("good", cbor(), { name: "page.html" })).status, 415);
   assert.equal(env.STORAGE.objects.size, 0);
+})(scenarioContext);
 });
 
-test("a tenant without an in_use list has nothing cleaned", async () => {
+Then("a tenant without an in_use list has nothing cleaned", function () {
+  return (async () => {
   const day = 86400e3, now = Date.parse("2026-12-01T00:00:00Z");
   await env.STORAGE.put(`sources/f/${"a".repeat(64)}/old.cbor`, cbor(), { customMetadata: { uploaded: new Date(now - 400 * day).toISOString(), kept: "false" } });
   assert.match((await clean(env, { sources: SOURCES }, now)).sources.skipped, /no in_use/);
   assert.equal(env.STORAGE.objects.size, 1);
+})(scenarioContext);
 });
 
-test("a private tenant with editors takes a GitHub token that may push, for reading and writing, and is never public", async () => {
+Then("a private tenant with editors takes a GitHub token that may push, for reading and writing, and is never public", function () {
+  return (async () => {
   const tenants = { sources: { ...SOURCES, private: true, editors: true } };
   const form = new FormData();
   form.append("file", new Blob([cbor()]), "file.bin");
@@ -335,9 +383,11 @@ test("a private tenant with editors takes a GitHub token that may push, for read
   // Without "editors" the same tenant takes no GitHub token, as before.
   const closed = { sources: { ...SOURCES, private: true } };
   assert.equal((await handle(new Request(`https://storage.example${url}`, { headers: { Authorization: "Bearer good" } }), env, closed)).status, 401);
+})(scenarioContext);
 });
 
-test("a private tenant's public_types are open to anyone, and nothing else in it is", async () => {
+Then("a private tenant's public_types are open to anyone, and nothing else in it is", function () {
+  return (async () => {
   const tenants = { sources: { ...SOURCES, private: true, editors: true, public_types: ["pdf"] } };
   const upload = async (bytes, name) => {
     const form = new FormData();
@@ -369,18 +419,22 @@ test("a private tenant's public_types are open to anyone, and nothing else in it
   fake.append("file", new Blob([cbor()]), "file.bin");
   fake.append("name", "fake.pdf");
   assert.equal((await handle(new Request("https://storage.example/sources/files", { method: "POST", body: fake, headers: { Authorization: "Bearer good" } }), env, tenants)).status, 400);
+})(scenarioContext);
 });
 
-test("the pdc tenant is public, and only pub-site's main writes it: kept signed objects and their reading data", () => {
+Then("the pdc tenant is public, and only pub-site's main writes it: kept signed objects and their reading data", function () {
+  return (() => {
   const t = REAL_TENANTS.pdc;
   assert.equal(t.private, undefined);
   assert.equal(t.repository, undefined, "no editors: no GitHub token can write here");
   assert.deepEqual(t.write, ["github:Sustenaut/pub-site@refs/heads/main"]);
   assert.deepEqual(t.files, { types: ["cbor", "json"], max_bytes: 26214400, kept: true });
   assert.equal(t.in_use, undefined, "nothing is cleaned");
+})(scenarioContext);
 });
 
-test("the facts tenant is private: business-plan's editors upload, its main reads, kept, signed objects only", () => {
+Then("the facts tenant is private: business-plan's editors upload, its main reads, kept, signed objects only", function () {
+  return (() => {
   const t = REAL_TENANTS.facts;
   assert.equal(t.private, true);
   assert.equal(t.editors, true);
@@ -389,9 +443,11 @@ test("the facts tenant is private: business-plan's editors upload, its main read
   assert.deepEqual(t.files.types, ["cbor"]);
   assert.equal(t.files.kept, true);
   assert.equal(t.public_types, undefined);
+})(scenarioContext);
 });
 
-test("the sources tenant is private: business-plan's main and the review pod read it, its editors still upload and move its heads, kept and never cleaned", () => {
+Then("the sources tenant is private: business-plan's main and the review pod read it, its editors still upload and move its heads, kept and never cleaned", function () {
+  return (() => {
   const t = REAL_TENANTS.sources;
   assert.equal(t.private, true);
   assert.equal(t.editors, true);
@@ -401,9 +457,11 @@ test("the sources tenant is private: business-plan's main and the review pod rea
   assert.equal(t.repository, "Sustenaut/business-plan");
   assert.equal(t.in_use, undefined);
   assert.deepEqual(t.files, { types: ["pdf", "cbor", "json"], max_bytes: 26214400, kept: true });
+})(scenarioContext);
 });
 
-test("an avro file must start as Avro does", async () => {
+Then("an avro file must start as Avro does", function () {
+  return (async () => {
   const tenants = { sources: { ...SOURCES, files: { types: ["avro"] } } };
   const upload = (bytes) => {
     const form = new FormData();
@@ -412,11 +470,13 @@ test("an avro file must start as Avro does", async () => {
   };
   assert.equal((await upload(new Uint8Array([0x4f, 0x62, 0x6a, 0x01, 0x00]))).status, 200);
   assert.equal((await upload(new Uint8Array([0x4f, 0x62, 0x6a, 0x02]))).status, 400);
+})(scenarioContext);
 });
 
 const gitHubAsks = () => asked.filter((u) => u.startsWith("https://api.github.com/")).length;
 
-test("GitHub's yes is kept a minute, so more uploads with the same token don't ask again", async () => {
+Then("GitHub's yes is kept a minute, so more uploads with the same token don't ask again", function () {
+  return (async () => {
   assert.equal((await upload("good", { "480.jpg": jpeg(480, 360) })).status, 200);
   assert.equal(gitHubAsks(), 2, "the repository, then who the person is");
   clock += 59e3;
@@ -427,17 +487,21 @@ test("GitHub's yes is kept a minute, so more uploads with the same token don't a
   // The same token for another repository is asked about on its own.
   assert.equal((await sendFile("good", pdf(), { name: "a.pdf" })).status, 200);
   assert.equal(gitHubAsks(), 4);
+})(scenarioContext);
 });
 
-test("a kept yes expires after a minute, and then a revoked permission is refused", async () => {
+Then("a kept yes expires after a minute, and then a revoked permission is refused", function () {
+  return (async () => {
   assert.equal((await upload("good", { "480.jpg": jpeg(480, 360) })).status, 200);
   canPush = false;
   clock += 60e3;
   assert.equal((await upload("good", { "480.jpg": jpeg(480, 361) })).status, 403);
   assert.equal(gitHubAsks(), 3);
+})(scenarioContext);
 });
 
-test("a no, or an error, is never kept", async () => {
+Then("a no, or an error, is never kept", function () {
+  return (async () => {
   canPush = false;
   assert.equal((await upload("good", { "480.jpg": jpeg(480, 360) })).status, 403);
   canPush = true;
@@ -445,24 +509,30 @@ test("a no, or an error, is never kept", async () => {
   assert.equal((await sendFile("ghs_other", pdf(), { name: "a.pdf" })).status, 403);
   assert.equal((await sendFile("ghs_other", pdf(), { name: "a.pdf" })).status, 403);
   assert.equal(asked.filter((u) => u.includes("/installation/")).length, 2);
+})(scenarioContext);
 });
 
-test("the cache is keyed by a hash of the token and repository, never the token", async () => {
+Then("the cache is keyed by a hash of the token and repository, never the token", function () {
+  return (async () => {
   await upload("good", { "480.jpg": jpeg(480, 360) });
   const [[key, value]] = [...allowedCache.entries];
   assert.match(key, /^[0-9a-f]{64}$/);
   assert.ok(!JSON.stringify([key, value]).includes("good"));
   assert.deepEqual({ ...value, until: 0 }, { login: "schryer", app: false, until: 0 });
+})(scenarioContext);
 });
 
-test("the cache holds at most a thousand yeses, dropping the oldest", async () => {
+Then("the cache holds at most a thousand yeses, dropping the oldest", function () {
+  return (async () => {
   for (let i = 0; i < 1000; i++) allowedCache.entries.set(`k${i}`, { login: "x", app: false, until: clock + 60e3 });
   await upload("good", { "480.jpg": jpeg(480, 360) });
   assert.equal(allowedCache.entries.size, 1000);
   assert.ok(!allowedCache.entries.has("k0"));
+})(scenarioContext);
 });
 
-test("every call to GitHub has a timeout, and GitHub not answering is a 503, not a refusal", async () => {
+Then("every call to GitHub has a timeout, and GitHub not answering is a 503, not a refusal", function () {
+  return (async () => {
   const signals = [];
   const answering = globalThis.fetch;
   globalThis.fetch = async (url, options = {}) => {
@@ -477,9 +547,11 @@ test("every call to GitHub has a timeout, and GitHub not answering is a 503, not
   assert.equal(allowedCache.entries.size, 0, "a timeout isn't kept");
   assert.ok(signals.length && signals.every((s) => s instanceof AbortSignal));
   globalThis.fetch = answering;
+})(scenarioContext);
 });
 
-test("the clean-up's in_use list has a timeout, and one that times out is skipped", async () => {
+Then("the clean-up's in_use list has a timeout, and one that times out is skipped", function () {
+  return (async () => {
   const signals = [];
   const answering = globalThis.fetch;
   globalThis.fetch = async (url, options = {}) => {
@@ -490,9 +562,11 @@ test("the clean-up's in_use list has a timeout, and one that times out is skippe
   assert.match(report["visit-ee"].skipped, /timed out/);
   assert.ok(signals.length === 2 && signals.every((s) => s instanceof AbortSignal));
   globalThis.fetch = answering;
+})(scenarioContext);
 });
 
-test("GitHub that can't be reached at all is a 503 too", async () => {
+Then("GitHub that can't be reached at all is a 503 too", function () {
+  return (async () => {
   const answering = globalThis.fetch;
   globalThis.fetch = async () => {
     throw new TypeError("fetch failed");
@@ -501,6 +575,7 @@ test("GitHub that can't be reached at all is a 503 too", async () => {
   assert.equal(response.status, 503);
   assert.match((await response.json()).error, /can't be reached: fetch failed/);
   globalThis.fetch = answering;
+})(scenarioContext);
 });
 
 // The call-log Durable Object's binding, keeping what each request sends it.
@@ -513,7 +588,8 @@ function callLogBinding() {
   };
 }
 
-test("each call to GitHub is a record of github.repo-ops check-push, tried once, as a person waits on it", async () => {
+Then("each call to GitHub is a record of github.repo-ops check-push, tried once, as a person waits on it", function () {
+  return (async () => {
   assert.equal(POLICIES.H.timeout * 1000, 10_000);
   env.CALL_LOG = callLogBinding();
   assert.equal((await upload("good", { "480.jpg": jpeg(480, 360) })).status, 200);
@@ -531,9 +607,11 @@ test("each call to GitHub is a record of github.repo-ops check-push, tried once,
   assert.match((await failed.json()).error, /GitHub said 502; try again/);
   assert.equal(tries, 1);
   globalThis.fetch = answering;
+})(scenarioContext);
 });
 
-test("a request's records go to the call log in one call, handed to waitUntil so the answer doesn't wait", async () => {
+Then("a request's records go to the call log in one call, handed to waitUntil so the answer doesn't wait", function () {
+  return (async () => {
   const handed = [];
   env.CALL_LOG = callLogBinding();
   const form = new FormData();
@@ -548,33 +626,42 @@ test("a request's records go to the call log in one call, handed to waitUntil so
   await handle(new Request("https://storage.example/nope"), env, TENANTS, { waitUntil: (p) => handed.push(p) });
   await handed[1];
   assert.equal(env.CALL_LOG.sent.length, 1);
+})(scenarioContext);
 });
 
-test("without the binding the records are let go, and nothing is written to the bucket", async () => {
+Then("without the binding the records are let go, and nothing is written to the bucket", function () {
+  return (async () => {
   delete env.CALL_LOG;
   assert.equal((await upload("good", { "480.jpg": jpeg(480, 360) })).status, 200);
   assert.deepEqual(callLog.sink.pending, []);
   assert.ok(![...env.STORAGE.objects.keys()].some((k) => k.startsWith("calls-storage/")));
+})(scenarioContext);
 });
 
-test("the calls-storage tenant is the call log's buffer: only ingest reads, writes or deletes through the API", () => {
+Then("the calls-storage tenant is the call log's buffer: only ingest reads, writes or deletes through the API", function () {
+  return (() => {
   assert.deepEqual(REAL_TENANTS["calls-storage"], {
     private: true, inbox: true, read: ["k8s:integrations/ingest"], write: ["k8s:integrations/ingest"], delete: ["k8s:integrations/ingest"],
   });
+})(scenarioContext);
 });
 
-test("the convergence engine's buffers, need-states and calls-convergence-engine, only it and ingest write", () => {
+Then("the convergence engine's buffers, need-states and calls-convergence-engine, only it and ingest write", function () {
+  return (() => {
   for (const name of ["need-states", "calls-convergence-engine"]) {
     assert.deepEqual(REAL_TENANTS[name], {
       private: true, inbox: true, read: ["k8s:integrations/ingest"],
       write: ["k8s:convergence/app", "k8s:integrations/ingest"], delete: ["k8s:integrations/ingest"],
     });
   }
+})(scenarioContext);
 });
 
-test("the calls-release-controlplane tenant is a call-log buffer both release deployments write", () => {
+Then("the calls-release-controlplane tenant is a call-log buffer both release deployments write", function () {
+  return (() => {
   assert.deepEqual(REAL_TENANTS["calls-release-controlplane"], {
     private: true, inbox: true, read: ["k8s:integrations/ingest"],
     write: ["k8s:release/app", "k8s:release-schryer/app", "k8s:integrations/ingest"], delete: ["k8s:integrations/ingest"],
   });
+})(scenarioContext);
 });

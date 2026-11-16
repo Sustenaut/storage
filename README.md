@@ -14,7 +14,7 @@ every DNS provider of the zone.
 
 Each site that uses it is a **tenant** in `tenants.json` and gets its own
 part of the bucket. [`openapi.json`](openapi.json) describes every route, its tokens,
-its answers and its errors (always `{"error": "..."}`), and `tests/openapi.test.js` fails
+its answers and its errors (always `{"error": "..."}`), and `tests/features/openapi.feature` fails
 when it and the code disagree. The JavaScript and Python clients are generated from it
 in [integrations](https://github.com/Sustenaut/integrations), on its `Caller`.
 
@@ -373,7 +373,7 @@ that keeps files too, like `opportunity` (opportunity.sustenaut.eu).
 
 ```sh
 npm ci
-npm test        # node --test, with an in-memory bucket and GitHub answered locally
+npm test        # cucumber-js (tests/features/), with an in-memory bucket and GitHub answered locally
 npm run dev     # wrangler pages dev, with a local bucket
 ```
 
