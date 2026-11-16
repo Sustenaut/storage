@@ -57,10 +57,10 @@ Before("@providers", function () {
     if (String(url) === JWKS) return Response.json({ keys: [publicJwk] });
     throw new Error(`unexpected fetch ${url}`);
   };
-})(scenarioContext);
+})();
 });
 After("@providers", function () {
-  return (() => (globalThis.fetch = realFetch))(scenarioContext);
+  return (() => (globalThis.fetch = realFetch))();
 });
 
 Then("the terraform tenant is public, kept, never cleaned, serves the mirror protocol, and only storage's own main writes it", function () {
@@ -72,7 +72,7 @@ Then("the terraform tenant is public, kept, never cleaned, serves the mirror pro
   assert.deepEqual(t.write, ["github:Sustenaut/storage@refs/heads/main"]);
   assert.deepEqual(t.files, { types: ["zip"], max_bytes: 104857600, kept: true });
   assert.equal(t.in_use, undefined);
-})(scenarioContext);
+})();
 });
 
 Then("index.json lists the versions mirrored, and <version>.json their archives with the zh: hash a lock pins", function () {
@@ -107,7 +107,7 @@ Then("index.json lists the versions mirrored, and <version>.json their archives 
   assert.equal((await get("/terraform/registry.terraform.io/hashicorp/google/5.0.0.json")).status, 404);
   assert.deepEqual(await (await get("/terraform/registry.terraform.io/hashicorp/nothing/index.json")).json(), { versions: {} });
   assert.equal((await get("/terraform/registry.terraform.io/hashicorp/google/index.json", "HEAD")).status, 200);
-})(scenarioContext);
+})();
 });
 
 Then("an archive is taken only named as a provider release names it, under its provider's address", function () {
@@ -120,13 +120,13 @@ Then("an archive is taken only named as a provider release names it, under its p
   assert.equal((await put("terraform-provider-google_7.0.0_linux_amd64.zip", google, new TextEncoder().encode("not a zip"))).status, 400);
   assert.equal((await put("terraform-provider-google_7.0.0_linux_amd64.zip", google, zip(1), await token("Sustenaut/business-plan"))).status, 403);
   assert.equal(env.STORAGE.objects.size, 0);
-})(scenarioContext);
+})();
 });
 
 Then("a tenant without providers has no mirror routes", function () {
   return (async () => {
   assert.equal((await get("/wheels/registry.terraform.io/hashicorp/google/index.json")).status, 404);
-})(scenarioContext);
+})();
 });
 
 Then("versions are listed in release order, not as text", function () {
@@ -138,7 +138,7 @@ Then("versions are listed in release order, not as text", function () {
     assert.equal((await put(name, "registry.terraform.io/hashicorp/tls", zip(n))).status, 200);
   const { versions } = await (await get("/terraform/registry.terraform.io/hashicorp/tls/index.json")).json();
   assert.deepEqual(Object.keys(versions), ["9.0.0", "10.0.0"]);
-})(scenarioContext);
+})();
 });
 
 Then("the pypi tenant is public, kept, never cleaned, serves a simple index, and only storage's own main writes it", function () {
@@ -150,7 +150,7 @@ Then("the pypi tenant is public, kept, never cleaned, serves a simple index, and
   assert.deepEqual(t.write, ["github:Sustenaut/storage@refs/heads/main"]);
   assert.deepEqual(t.files, { types: ["whl", "gz", "zip"], max_bytes: 104857600, kept: true });
   assert.equal(t.in_use, undefined);
-})(scenarioContext);
+})();
 });
 
 Then("a project's simple index links each of its files, with the sha256 a lock pins", function () {
@@ -175,7 +175,7 @@ Then("a project's simple index links each of its files, with the sha256 a lock p
   assert.equal((await get("/pypi/simple/nothing/")).status, 404);
   assert.equal((await get("/pypi/simple/pyyaml/", "HEAD")).status, 200);
   assert.equal((await get("/terraform/simple/pyyaml/")).status, 404, "only a tenant with simple has an index");
-})(scenarioContext);
+})();
 });
 
 Then("a package's file is taken only under its project's normalized name", function () {
@@ -186,5 +186,5 @@ Then("a package's file is taken only under its project's normalized name", funct
   assert.equal((await pkg("pytest-9.0.3-py3-none-any.whl", "pyyaml")).status, 400, "another project");
   assert.equal((await pkg("pytest_bdd-8.1.0-py3-none-any.whl", "pytest")).status, 400, "a name is matched whole");
   assert.equal(env.STORAGE.objects.size, 0);
-})(scenarioContext);
+})();
 });

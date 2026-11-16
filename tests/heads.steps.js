@@ -77,12 +77,12 @@ Before("@heads", function () {
     if (String(url) === `${ISSUER}/.well-known/jwks`) return Response.json({ keys: [jwk] });
     throw new Error(`unexpected fetch ${url}`);
   };
-})(scenarioContext);
+})();
 });
 After("@heads", function () {
   return (() => {
   globalThis.fetch = realFetch;
-})(scenarioContext);
+})();
 });
 
 const request = async (path, { method = "GET", as = WRITE, ref, headers = {}, body, tenants = TENANTS } = {}) =>
@@ -122,7 +122,7 @@ Then("a head serves the file it points at, with its hash as the ETag, uncached",
   assert.equal(r.headers.get("Content-Type"), "application/json");
   assert.match(r.headers.get("Cache-Control"), /no-store/);
   assert.match(r.headers.get("Content-Security-Policy"), /sandbox/);
-})(scenarioContext);
+})();
 });
 
 Then("HEAD gives the hash without the file", function () {
@@ -132,7 +132,7 @@ Then("HEAD gives the hash without the file", function () {
   const r = await request("/snaps/head/board", { method: "HEAD" });
   assert.equal(r.headers.get("ETag"), `"${hash}"`);
   assert.equal(await r.text(), "");
-})(scenarioContext);
+})();
 });
 
 Then("a head that has never moved is not found, and takes only If-None-Match: *", function () {
@@ -143,7 +143,7 @@ Then("a head that has never moved is not found, and takes only If-None-Match: *"
   assert.equal((await move(hash, {})).status, 412);
   assert.equal((await move(hash, from(hash))).status, 412);
   assert.equal((await move(hash, first)).status, 200);
-})(scenarioContext);
+})();
 });
 
 Then("moving needs the current hash, and answers 412 otherwise", function () {
@@ -158,7 +158,7 @@ Then("moving needs the current hash, and answers 412 otherwise", function () {
   assert.equal((await move(b, from(a))).status, 200);
   assert.equal((await move(c, from(a))).status, 412, "a is no longer current");
   assert.equal((await request("/snaps/head/board")).headers.get("ETag"), `"${b}"`);
-})(scenarioContext);
+})();
 });
 
 Then("If-Match takes a bare or weak hash as well as a quoted one", function () {
@@ -169,7 +169,7 @@ Then("If-Match takes a bare or weak hash as well as a quoted one", function () {
   await move(a, first);
   assert.equal((await move(b, { "If-Match": a })).status, 200);
   assert.equal((await move(c, { "If-Match": `W/"${b}"` })).status, 200);
-})(scenarioContext);
+})();
 });
 
 Then("of two moves from the same place, only one wins", function () {
@@ -187,7 +187,7 @@ Then("of two moves from the same place, only one wins", function () {
   };
   assert.equal((await move(b, from(a))).status, 412);
   assert.equal((await request("/snaps/head/board")).headers.get("ETag"), `"${c}"`);
-})(scenarioContext);
+})();
 });
 
 Then("two first moves at once: only one wins", function () {
@@ -202,7 +202,7 @@ Then("two first moves at once: only one wins", function () {
   };
   assert.equal((await move(a, first)).status, 412);
   assert.equal((await request("/snaps/head/board")).headers.get("ETag"), `"${b}"`);
-})(scenarioContext);
+})();
 });
 
 Then("the log lists every place, newest first, with time and principal", function () {
@@ -247,7 +247,7 @@ Then("a move that fails loses nothing and adds nothing false to the log", functi
   assert.equal((await move(b, from(a))).status, 200);
   const after = await (await request("/snaps/head/board/log")).json();
   assert.deepEqual(after.log.map((e) => e.hash), [b, a]);
-})(scenarioContext);
+})();
 });
 
 Then("moving to where it already points changes nothing", function () {
@@ -257,7 +257,7 @@ Then("moving to where it already points changes nothing", function () {
   assert.equal((await move(a, from(a))).status, 200);
   const { log } = await (await request("/snaps/head/board/log")).json();
   assert.equal(log.length, 1);
-})(scenarioContext);
+})();
 });
 
 Then("a head can only point at a stored file", function () {
@@ -268,7 +268,7 @@ Then("a head can only point at a stored file", function () {
     assert.equal(r.status, 400, body);
   }
   assert.equal((await request("/snaps/head/board")).status, 404);
-})(scenarioContext);
+})();
 });
 
 Then("each name is its own head", function () {
@@ -279,7 +279,7 @@ Then("each name is its own head", function () {
   assert.equal((await request("/snaps/head/Bad%20Name")).status, 404);
   assert.equal((await request("/snaps/head/board/log/x")).status, 404);
   assert.equal((await request("/snaps/head/board/log", { method: "PUT", headers: first, body: "{}" })).status, 404);
-})(scenarioContext);
+})();
 });
 
 Then("only the write list moves a head, and only readers read one", function () {
@@ -292,7 +292,7 @@ Then("only the write list moves a head, and only readers read one", function () 
   assert.equal((await request("/snaps/head/board", { as: "Sustenaut/stranger" })).status, 403);
   assert.equal((await request("/snaps/head/board", { as: null })).status, 401);
   assert.equal((await request("/snaps/head/board/log", { as: "Sustenaut/stranger" })).status, 403);
-})(scenarioContext);
+})();
 });
 
 Then("a tenant without heads, or a public one, has none", function () {
@@ -302,7 +302,7 @@ Then("a tenant without heads, or a public one, has none", function () {
   assert.equal((await request("/noheads/head/board")).status, 404);
   assert.equal((await move(hash, first, "open")).status, 404);
   assert.equal((await request("/open/head/board", { as: null })).status, 404);
-})(scenarioContext);
+})();
 });
 
 Then("each release tenant is read by its own deployment alone", function () {
@@ -319,7 +319,7 @@ Then("each release tenant is read by its own deployment alone", function () {
     assert.equal(t.files.kept, true);
     assert.equal(t.repository, undefined);
   }
-})(scenarioContext);
+})();
 });
 
 Then("one deployment's token can't read the other's tenant", function () {
@@ -329,7 +329,7 @@ Then("one deployment's token can't read the other's tenant", function () {
   assert.equal(can("release-schryer", "k8s:release/app"), false);
   assert.equal(can("release-sustenaut", "github:schryer/release-controlplane@refs/heads/main"), false);
   assert.equal(can("release-schryer", "github:Sustenaut/release-controlplane@refs/heads/main"), false);
-})(scenarioContext);
+})();
 });
 
 const PLANE = ["observability", "notifier", "integrations", "release-controlplane", "opportunity-site", "notebooks", "auth"];
@@ -344,7 +344,7 @@ Then("the plane tenant is read and written by each plane repository's main and t
   assert.deepEqual(t.write, mains);
   assert.deepEqual(t.files, { types: ["json"], max_bytes: 1048576, kept: true });
   assert.equal(t.repository, undefined);
-})(scenarioContext);
+})();
 });
 
 Then("one plane repository's main writes a head another reads; others can't", function () {
@@ -372,5 +372,5 @@ Then("one plane repository's main writes a head another reads; others can't", fu
   assert.equal((await upload("{}", { ref: "refs/heads/feature" })).status, 403);
   assert.equal((await upload("{}", {}, "state.pdf")).status, 415);
   assert.equal((await upload(`"${"x".repeat(1048576)}"`)).status, 413);
-})(scenarioContext);
+})();
 });

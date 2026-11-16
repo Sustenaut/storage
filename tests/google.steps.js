@@ -45,12 +45,12 @@ Before("@google", function () {
     if (String(url) === CERTS) return Response.json({ keys: [jwk] });
     throw new Error(`unexpected fetch ${url}`);
   };
-})(scenarioContext);
+})();
 });
 After("@google", function () {
   return (() => {
   globalThis.fetch = realFetch;
-})(scenarioContext);
+})();
 });
 
 const refused = (t) => assert.rejects(verify(t), (err) => err.status === 401);
@@ -60,7 +60,7 @@ Then("a service account's identity token names its verified address", function (
   assert.equal(await verify(await token()), `gcp:${ACCOUNT}`);
   assert.equal(await verify(await token({ iss: "accounts.google.com" })), `gcp:${ACCOUNT}`);
   assert.deepEqual(fetched, [CERTS]);
-})(scenarioContext);
+})();
 });
 
 Then("a Google token for another audience, out of date, or not signed by Google is refused", function () {
@@ -68,7 +68,7 @@ Then("a Google token for another audience, out of date, or not signed by Google 
   await refused(await token({ aud: "https://someone-else.example" }));
   await refused(await token({ exp: now() - 3600 }));
   await refused(await token({}, otherKey.privateKey));
-})(scenarioContext);
+})();
 });
 
 Then("only a verified service account's address is a principal", function () {
@@ -80,7 +80,7 @@ Then("only a verified service account's address is a principal", function () {
   await refused(await token({ email: "someone@gmail.com" }));
   await refused(await token({ email: "plan@sustenaut.iam.gserviceaccount.com.example" }));
   await refused(await token({ email: "Plan@sustenaut.iam.gserviceaccount.com" }));
-})(scenarioContext);
+})();
 });
 
 Then("a tenant's list names Google accounts exactly", function () {
@@ -91,5 +91,5 @@ Then("a tenant's list names Google accounts exactly", function () {
   // The part after @ is never read as a ref: an account of the same name in another project isn't ours.
   assert.ok(!allowed("gcp:plan@someone-else.iam.gserviceaccount.com", ["gcp:plan"]));
   assert.ok(!allowed("k8s:opportunity/app@x", ["k8s:opportunity/app"]));
-})(scenarioContext);
+})();
 });

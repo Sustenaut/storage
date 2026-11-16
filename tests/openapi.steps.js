@@ -64,7 +64,7 @@ Then("the spec is OpenAPI 3.1, every reference resolves, and every operation is 
     assert.deepEqual(inPath.map((p) => p.name).sort(), [...path.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort(), where);
     for (const p of inPath) assert.ok(p.required && p.schema && p.example !== undefined, `${where} ${p.name}`);
   }
-})(scenarioContext);
+})();
 });
 
 Then("the spec has every route the header of src\\/storage.js lists, and no other", function () {
@@ -74,7 +74,7 @@ Then("the spec has every route the header of src\\/storage.js lists, and no othe
   const listed = [...header.matchAll(/^\/\/ {3}([A-Z]+(?:,[A-Z]+)*) (\/\S*)/gm)].flatMap(([, methods, path]) => methods.split(",").map((m) => `${m} ${path}`));
   assert.ok(listed.length > 10);
   assert.deepEqual(operations.map((o) => `${o.method} ${o.path}`).sort(), [...new Set(listed)].sort());
-})(scenarioContext);
+})();
 });
 
 // A tenant with everything, a GitHub token that may push to it, and an empty bucket:
@@ -98,10 +98,10 @@ Before("@openapi", function () {
     if (String(url) === "https://api.github.com/user") return Response.json({ login: "editor" });
     throw new Error(`unexpected fetch ${url}`);
   };
-})(scenarioContext);
+})();
 });
 After("@openapi", function () {
-  return (() => (globalThis.fetch = realFetch))(scenarioContext);
+  return (() => (globalThis.fetch = realFetch))();
 });
 
 function sample({ path, item, op }) {
@@ -125,7 +125,7 @@ Then("the code answers <operation.method> <operation.path>", async function () {
     const { status, error } = await answer(operation.method, sample(operation));
     assert.ok(!error.startsWith("no such route"), `${status} ${error}`);
     assert.notEqual(status, 405);
-  })(scenarioContext);
+  })();
   }
 });
 
@@ -135,5 +135,5 @@ Then("and a request for no route says so", function () {
     const { status, error } = await answer(method, path);
     assert.ok(error.startsWith("no such route"), `${method} ${path}: ${status} ${error}`);
   }
-})(scenarioContext);
+})();
 });

@@ -77,13 +77,13 @@ Before("@private", function () {
     if (url === "https://api.github.com/user") return Response.json({ login: "schryer" });
     throw new Error(`unexpected fetch ${url}`);
   };
-})(scenarioContext);
+})();
 });
 After("@private", function () {
   return (() => {
   globalThis.fetch = realFetch;
   globalThis.caches = realCaches;
-})(scenarioContext);
+})();
 });
 
 function put(tenant, bearer, name, bytes) {
@@ -109,7 +109,7 @@ Then("the publications tenant is private: business-plan's main writes it, pub-si
   assert.equal(t.in_use, undefined);
   assert.equal(t.editors, true, "its objects are composed on a person's machine");
   assert.equal(t.repository, "Sustenaut/business-plan");
-})(scenarioContext);
+})();
 });
 
 Then("a workflow's token writes a private file, and a reader gets it, never cached or shared", function () {
@@ -134,7 +134,7 @@ Then("a workflow's token writes a private file, and a reader gets it, never cach
   // A writer may read what it wrote.
   assert.equal((await get(file.url, await BP_MAIN())).status, 200);
   assert.deepEqual(cached, [], "the Cache API is never asked");
-})(scenarioContext);
+})();
 });
 
 Then("a private file is refused without a token of a principal on its lists, before anything is looked up", function () {
@@ -146,7 +146,7 @@ Then("a private file is refused without a token of a principal on its lists, bef
   assert.equal((await get(url, await token("Sustenaut/pub-site-fork"))).status, 403, "a name is matched whole");
   assert.equal((await get("/publications/f/" + "0".repeat(64) + "/x.tar.gz")).status, 401, "no token learns nothing, even of what isn't there");
   assert.equal((await get("/publications/f/" + "0".repeat(64) + "/x.tar.gz", await PUB_SITE())).status, 404);
-})(scenarioContext);
+})();
 });
 
 Then("only the writers' principals, at their ref, write a private tenant; GitHub tokens never do", function () {
@@ -159,7 +159,7 @@ Then("only the writers' principals, at their ref, write a private tenant; GitHub
   assert.equal((await put("publications", await BP_MAIN(), "p.pdf", pdf())).status, 415);
   assert.equal((await put("publications", await BP_MAIN(), "p.tar.gz", pdf())).status, 400, "a .gz must be gzip");
   assert.equal(env.STORAGE.objects.size, 0);
-})(scenarioContext);
+})();
 });
 
 Then("a public tenant takes a workflow's token when its write list names it, and GitHub tokens as before", function () {
@@ -173,7 +173,7 @@ Then("a public tenant takes a workflow's token when its write list names it, and
   assert.equal(read.status, 200, "public files need no token");
   assert.equal(read.headers.get("Access-Control-Allow-Origin"), "*");
   assert.match(read.headers.get("Cache-Control"), /public/);
-})(scenarioContext);
+})();
 });
 
 Then("the wheels tenant is public, kept, never cleaned, and only storage's own main writes it", function () {
@@ -184,7 +184,7 @@ Then("the wheels tenant is public, kept, never cleaned, and only storage's own m
   assert.deepEqual(t.write, ["github:Sustenaut/storage@refs/heads/main"]);
   assert.deepEqual(t.files, { types: ["whl"], max_bytes: 26214400, kept: true });
   assert.equal(t.in_use, undefined, "nothing is cleaned");
-})(scenarioContext);
+})();
 });
 
 Then("a mirrored wheel is at the address its lock's sha256 names, for anyone, and a .whl must be a zip", function () {
@@ -207,7 +207,7 @@ Then("a mirrored wheel is at the address its lock's sha256 names, for anyone, an
   assert.equal((await put("wheels", "good", name, wheel)).status, 401, "nor do GitHub tokens");
   assert.equal((await put("wheels", await token("Sustenaut/storage"), name, pdf())).status, 400, "a .whl must be a zip");
   assert.equal((await put("wheels", await token("Sustenaut/storage"), "a.pdf", pdf())).status, 415);
-})(scenarioContext);
+})();
 });
 
 Then("tokens are refused unless RS256, from a trusted issuer, signed by its key, for this audience and in date", function () {
@@ -232,13 +232,13 @@ Then("tokens are refused unless RS256, from a trusted issuer, signed by its key,
   await refused("not.a.token");
   // A minute of clock skew is allowed.
   assert.ok(await verify(await token(repo, "refs/heads/main", { claims: { exp: now() - 30 } })));
-})(scenarioContext);
+})();
 });
 
 Then("an audience list is taken when it includes this service", function () {
   return (async () => {
   assert.ok(await verify(await token("Sustenaut/pub-site", "refs/heads/main", { claims: { aud: ["other", AUDIENCE] } })));
-})(scenarioContext);
+})();
 });
 
 Then("the issuer's keys are fetched once, then again only when old or for a key they lack", function () {
@@ -254,7 +254,7 @@ Then("the issuer's keys are fetched once, then again only when old or for a key 
   assert.equal(fetches.filter((u) => u === JWKS).length, 2, "but does after it");
   await verify(t, { now: Date.now() + 13 * 60e3 }).catch(() => {});
   assert.equal(fetches.filter((u) => u === JWKS).length, 3, "and after ten minutes");
-})(scenarioContext);
+})();
 });
 
 Then("a principal matches a list entry by repository without case, and by ref when the entry names one", function () {
@@ -267,14 +267,14 @@ Then("a principal matches a list entry by repository without case, and by ref wh
   assert.ok(!allowed(p, ["auth:Sustenaut/pub-site"]));
   assert.ok(!allowed(p, []));
   assert.ok(!allowed(p, undefined));
-})(scenarioContext);
+})();
 });
 
 Then("GitHub tokens aren't taken for JWTs", function () {
   return (() => {
   for (const t of ["ghp_abc", "ghs_abc", "github_pat_11AB_cd", "gho_x", "good"]) assert.ok(!isJwt(t), t);
   assert.ok(isJwt("eyJh.eyJi.c2ln"));
-})(scenarioContext);
+})();
 });
 
 Then("the clean-up leaves a private tenant alone", function () {
@@ -284,7 +284,7 @@ Then("the clean-up leaves a private tenant alone", function () {
   const report = await clean(env, { publications: { ...TENANTS.publications, in_use: "https://example/in-use.json" } }, Date.now() + 365 * 86400e3);
   assert.deepEqual(report.publications, { skipped: "private: nothing is cleaned" });
   assert.equal(env.STORAGE.objects.size, 1);
-})(scenarioContext);
+})();
 });
 
 // The k3s server's projected service-account tokens, against a pinned key set.
@@ -320,7 +320,7 @@ Then("a pod's service-account token names its namespace and account, against the
   await refused(await podToken("opportunity", "app", { kid: "k8s2" }));
   // Another cluster has the same issuer name but not this key.
   await refused(await podToken("opportunity", "app", { key: issuerKey.privateKey, kid: "k8s1" }));
-})(scenarioContext);
+})();
 });
 
 Then("the opportunity tenant takes the opportunity app's pod token, and no other account's", function () {
@@ -331,7 +331,7 @@ Then("the opportunity tenant takes the opportunity app's pod token, and no other
   assert.ok(!allowed("k8s:opportunity/default", t.write));
   assert.ok(!allowed("k8s:auth/app", t.write));
   assert.equal(t.repository, "Sustenaut/business-plan", "editors' GitHub tokens still work");
-})(scenarioContext);
+})();
 });
 
 Then("the pinned k3s key set is the server's: an issuer and RSA signing keys", function () {
@@ -340,5 +340,5 @@ Then("the pinned k3s key set is the server's: an issuer and RSA signing keys", f
   assert.equal(K8S.issuer, K8S_ISSUER);
   assert.ok(K8S.jwks.keys.length > 0, "src/k8s.json has no keys yet: put the server's /openid/v1/jwks in it");
   for (const k of K8S.jwks.keys) assert.equal(k.kty, "RSA");
-})(scenarioContext);
+})();
 });

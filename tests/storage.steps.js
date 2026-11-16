@@ -92,10 +92,10 @@ Before("@storage", function () {
     if (url === "https://opportunity.sustenaut.eu/storage-in-use.json") return Response.json(inUse);
     throw new Error(`unexpected fetch ${url}`);
   };
-})(scenarioContext);
+})();
 });
 After("@storage", function () {
-  return (() => (globalThis.fetch = realFetch))(scenarioContext);
+  return (() => (globalThis.fetch = realFetch))();
 });
 
 function upload(token, parts) {
@@ -121,7 +121,7 @@ Then("an editor's upload is stored and named by its content", function () {
   assert.equal(served.status, 200);
   assert.equal(served.headers.get("Content-Type"), "image/jpeg");
   assert.match(served.headers.get("Cache-Control"), /immutable/);
-})(scenarioContext);
+})();
 });
 
 Then("only someone who may push to the repository can upload", function () {
@@ -131,7 +131,7 @@ Then("only someone who may push to the repository can upload", function () {
   assert.equal((await upload("good", { "480.jpg": jpeg(480, 360) })).status, 403);
   assert.equal((await upload("", { "480.jpg": jpeg(480, 360) })).status, 401);
   assert.equal(env.STORAGE.objects.size, 0);
-})(scenarioContext);
+})();
 });
 
 Then("an upload must be photos of allowed sizes", function () {
@@ -140,7 +140,7 @@ Then("an upload must be photos of allowed sizes", function () {
   assert.equal((await upload("good", { "4000.jpg": jpeg(4000, 3000) })).status, 400);
   assert.equal((await upload("good", { "evil.html": jpeg(480, 360) })).status, 400);
   assert.equal((await upload("good", { "480.jpg": jpeg(480, 360, Math.ceil(3.1 * 1024 * 1024)) })).status, 413);
-})(scenarioContext);
+})();
 });
 
 Then("the clean-up deletes old photos no place uses, and nothing else", function () {
@@ -158,13 +158,13 @@ Then("the clean-up deletes old photos no place uses, and nothing else", function
   // An empty list while photos exist looks like a broken site: keep all.
   sitePhotos = [];
   assert.match((await clean(env, TENANTS, now + 365 * day))["visit-ee"].skipped, /lists no photos/);
-})(scenarioContext);
+})();
 });
 
 Then("a JPEG's size comes from its frame header", function () {
   return (() => {
   assert.deepEqual(jpegSize(jpeg(1600, 1067)), { width: 1600, height: 1067 });
-})(scenarioContext);
+})();
 });
 
 Then("the clean-up runs once a day however often it is called, and other sites' paths are unknown", function () {
@@ -174,7 +174,7 @@ Then("the clean-up runs once a day however often it is called, and other sites' 
   assert.equal((await call(new Request("https://storage.example/_clean", { method: "POST" }))).status, 429);
   assert.equal((await call(new Request("https://storage.example/elsewhere/p/aaaaaaaaaaaaaaaa/480.jpg"))).status, 404);
   assert.equal((await call(new Request("https://storage.example/visit-ee/p/aaaaaaaaaaaaaaaa/480.jpg"))).status, 404);
-})(scenarioContext);
+})();
 });
 
 // --- Files -------------------------------------------------------------------
@@ -215,7 +215,7 @@ Then("a file is stored under its content's SHA-256 and served with its type, for
   const got = await call(new Request(`https://storage.example${deck.url}`));
   assert.equal(got.headers.get("Content-Type"), "application/vnd.openxmlformats-officedocument.presentationml.presentation");
   assert.match(got.headers.get("Content-Disposition"), /^attachment/);
-})(scenarioContext);
+})();
 });
 
 Then("files must be of a type the tenant allows, look like it, and fit", function () {
@@ -232,7 +232,7 @@ Then("files must be of a type the tenant allows, look like it, and fit", functio
   // A tenant without "files" refuses them, and doesn't serve the path either.
   assert.equal((await sendFile("good", pdf(), { name: "a.pdf" }, "visit-ee")).status, 404);
   assert.equal((await call(new Request(`https://storage.example/visit-ee/f/${"a".repeat(64)}/a.pdf`))).status, 404);
-})(scenarioContext);
+})();
 });
 
 Then("only someone who may push to the tenant's repository can upload a file", function () {
@@ -242,7 +242,7 @@ Then("only someone who may push to the tenant's repository can upload a file", f
   canPush = false;
   assert.equal((await sendFile("good", pdf(), { name: "a.pdf" })).status, 403);
   assert.equal(env.STORAGE.objects.size, 0);
-})(scenarioContext);
+})();
 });
 
 Then("a GitHub App installation token uploads when its installation can write to the repository", function () {
@@ -263,7 +263,7 @@ Then("a GitHub App installation token uploads when its installation can write to
   assert.equal((await sendFile("ghs_app", pdf("2"), { name: "b.pdf" })).status, 403);
   appRepos = [{ full_name: "schryer/visit-ee", permissions: { admin: false, push: true, pull: true } }];
   assert.equal((await sendFile("ghs_app", pdf("3"), { name: "c.pdf" })).status, 403);
-})(scenarioContext);
+})();
 });
 
 Then("kept files are never cleaned, others are cleaned like photos, and only when the list names files", function () {
@@ -288,7 +288,7 @@ Then("kept files are never cleaned, others are cleaned like photos, and only whe
   inUse = { photos: [], files: [] };
   assert.match((await clean(env, tenants, now + 365 * day)).opportunity.skipped, /lists no files/);
   assert.equal(env.STORAGE.objects.size, 3);
-})(scenarioContext);
+})();
 });
 
 Then("a kept file stays kept when the same file is uploaded again", function () {
@@ -298,7 +298,7 @@ Then("a kept file stays kept when the same file is uploaded again", function () 
   assert.equal(again.id, first.id);
   assert.equal(again.kept, true);
   assert.equal(env.STORAGE.objects.get(`opportunity/f/${first.id}/offer.pdf`).customMetadata.kept, "true");
-})(scenarioContext);
+})();
 });
 
 Then("the opportunity tenant takes the files the opportunity site needs", function () {
@@ -310,7 +310,7 @@ Then("the opportunity tenant takes the files the opportunity site needs", functi
   assert.deepEqual(t.origins, ["https://opportunity.sustenaut.eu"]);
   assert.deepEqual(t.files.types, ["pdf", "pptx", "docx", "png", "jpg", "svg", "csv", "xlsx"]);
   assert.equal(REAL_TENANTS["visit-ee"].files, undefined); // photos only
-})(scenarioContext);
+})();
 });
 
 // --- Sources -----------------------------------------------------------------
@@ -340,7 +340,7 @@ Then("a sources tenant keeps papers, publet objects and their index, all kept", 
   const shown = await handle(new Request(`https://storage.example${index.url}`), env, { sources: SOURCES });
   assert.equal(shown.headers.get("Content-Type"), "application/json");
   assert.match(shown.headers.get("Content-Disposition"), /^inline/);
-})(scenarioContext);
+})();
 });
 
 Then("a cbor file must be a CBOR map and a json file must parse", function () {
@@ -351,7 +351,7 @@ Then("a cbor file must be a CBOR map and a json file must parse", function () {
   assert.equal((await sources("good", new Uint8Array([0x7b, 0xff, 0x7d]), { name: "bytes.json" })).status, 400); // not UTF-8
   assert.equal((await sources("good", cbor(), { name: "page.html" })).status, 415);
   assert.equal(env.STORAGE.objects.size, 0);
-})(scenarioContext);
+})();
 });
 
 Then("a tenant without an in_use list has nothing cleaned", function () {
@@ -360,7 +360,7 @@ Then("a tenant without an in_use list has nothing cleaned", function () {
   await env.STORAGE.put(`sources/f/${"a".repeat(64)}/old.cbor`, cbor(), { customMetadata: { uploaded: new Date(now - 400 * day).toISOString(), kept: "false" } });
   assert.match((await clean(env, { sources: SOURCES }, now)).sources.skipped, /no in_use/);
   assert.equal(env.STORAGE.objects.size, 1);
-})(scenarioContext);
+})();
 });
 
 Then("a private tenant with editors takes a GitHub token that may push, for reading and writing, and is never public", function () {
@@ -383,7 +383,7 @@ Then("a private tenant with editors takes a GitHub token that may push, for read
   // Without "editors" the same tenant takes no GitHub token, as before.
   const closed = { sources: { ...SOURCES, private: true } };
   assert.equal((await handle(new Request(`https://storage.example${url}`, { headers: { Authorization: "Bearer good" } }), env, closed)).status, 401);
-})(scenarioContext);
+})();
 });
 
 Then("a private tenant's public_types are open to anyone, and nothing else in it is", function () {
@@ -419,7 +419,7 @@ Then("a private tenant's public_types are open to anyone, and nothing else in it
   fake.append("file", new Blob([cbor()]), "file.bin");
   fake.append("name", "fake.pdf");
   assert.equal((await handle(new Request("https://storage.example/sources/files", { method: "POST", body: fake, headers: { Authorization: "Bearer good" } }), env, tenants)).status, 400);
-})(scenarioContext);
+})();
 });
 
 Then("the pdc tenant is public, and only pub-site's main writes it: kept signed objects and their reading data", function () {
@@ -430,7 +430,7 @@ Then("the pdc tenant is public, and only pub-site's main writes it: kept signed 
   assert.deepEqual(t.write, ["github:Sustenaut/pub-site@refs/heads/main"]);
   assert.deepEqual(t.files, { types: ["cbor", "json"], max_bytes: 26214400, kept: true });
   assert.equal(t.in_use, undefined, "nothing is cleaned");
-})(scenarioContext);
+})();
 });
 
 Then("the facts tenant is private: business-plan's editors upload, its main reads, kept, signed objects only", function () {
@@ -443,7 +443,7 @@ Then("the facts tenant is private: business-plan's editors upload, its main read
   assert.deepEqual(t.files.types, ["cbor"]);
   assert.equal(t.files.kept, true);
   assert.equal(t.public_types, undefined);
-})(scenarioContext);
+})();
 });
 
 Then("the sources tenant is private: business-plan's main and the review pod read it, its editors still upload and move its heads, kept and never cleaned", function () {
@@ -457,7 +457,7 @@ Then("the sources tenant is private: business-plan's main and the review pod rea
   assert.equal(t.repository, "Sustenaut/business-plan");
   assert.equal(t.in_use, undefined);
   assert.deepEqual(t.files, { types: ["pdf", "cbor", "json"], max_bytes: 26214400, kept: true });
-})(scenarioContext);
+})();
 });
 
 Then("an avro file must start as Avro does", function () {
@@ -470,7 +470,7 @@ Then("an avro file must start as Avro does", function () {
   };
   assert.equal((await upload(new Uint8Array([0x4f, 0x62, 0x6a, 0x01, 0x00]))).status, 200);
   assert.equal((await upload(new Uint8Array([0x4f, 0x62, 0x6a, 0x02]))).status, 400);
-})(scenarioContext);
+})();
 });
 
 const gitHubAsks = () => asked.filter((u) => u.startsWith("https://api.github.com/")).length;
@@ -487,7 +487,7 @@ Then("GitHub's yes is kept a minute, so more uploads with the same token don't a
   // The same token for another repository is asked about on its own.
   assert.equal((await sendFile("good", pdf(), { name: "a.pdf" })).status, 200);
   assert.equal(gitHubAsks(), 4);
-})(scenarioContext);
+})();
 });
 
 Then("a kept yes expires after a minute, and then a revoked permission is refused", function () {
@@ -497,7 +497,7 @@ Then("a kept yes expires after a minute, and then a revoked permission is refuse
   clock += 60e3;
   assert.equal((await upload("good", { "480.jpg": jpeg(480, 361) })).status, 403);
   assert.equal(gitHubAsks(), 3);
-})(scenarioContext);
+})();
 });
 
 Then("a no, or an error, is never kept", function () {
@@ -509,7 +509,7 @@ Then("a no, or an error, is never kept", function () {
   assert.equal((await sendFile("ghs_other", pdf(), { name: "a.pdf" })).status, 403);
   assert.equal((await sendFile("ghs_other", pdf(), { name: "a.pdf" })).status, 403);
   assert.equal(asked.filter((u) => u.includes("/installation/")).length, 2);
-})(scenarioContext);
+})();
 });
 
 Then("the cache is keyed by a hash of the token and repository, never the token", function () {
@@ -519,7 +519,7 @@ Then("the cache is keyed by a hash of the token and repository, never the token"
   assert.match(key, /^[0-9a-f]{64}$/);
   assert.ok(!JSON.stringify([key, value]).includes("good"));
   assert.deepEqual({ ...value, until: 0 }, { login: "schryer", app: false, until: 0 });
-})(scenarioContext);
+})();
 });
 
 Then("the cache holds at most a thousand yeses, dropping the oldest", function () {
@@ -528,7 +528,7 @@ Then("the cache holds at most a thousand yeses, dropping the oldest", function (
   await upload("good", { "480.jpg": jpeg(480, 360) });
   assert.equal(allowedCache.entries.size, 1000);
   assert.ok(!allowedCache.entries.has("k0"));
-})(scenarioContext);
+})();
 });
 
 Then("every call to GitHub has a timeout, and GitHub not answering is a 503, not a refusal", function () {
@@ -547,7 +547,7 @@ Then("every call to GitHub has a timeout, and GitHub not answering is a 503, not
   assert.equal(allowedCache.entries.size, 0, "a timeout isn't kept");
   assert.ok(signals.length && signals.every((s) => s instanceof AbortSignal));
   globalThis.fetch = answering;
-})(scenarioContext);
+})();
 });
 
 Then("the clean-up's in_use list has a timeout, and one that times out is skipped", function () {
@@ -562,7 +562,7 @@ Then("the clean-up's in_use list has a timeout, and one that times out is skippe
   assert.match(report["visit-ee"].skipped, /timed out/);
   assert.ok(signals.length === 2 && signals.every((s) => s instanceof AbortSignal));
   globalThis.fetch = answering;
-})(scenarioContext);
+})();
 });
 
 Then("GitHub that can't be reached at all is a 503 too", function () {
@@ -575,7 +575,7 @@ Then("GitHub that can't be reached at all is a 503 too", function () {
   assert.equal(response.status, 503);
   assert.match((await response.json()).error, /can't be reached: fetch failed/);
   globalThis.fetch = answering;
-})(scenarioContext);
+})();
 });
 
 // The call-log Durable Object's binding, keeping what each request sends it.
@@ -607,7 +607,7 @@ Then("each call to GitHub is a record of github.repo-ops check-push, tried once,
   assert.match((await failed.json()).error, /GitHub said 502; try again/);
   assert.equal(tries, 1);
   globalThis.fetch = answering;
-})(scenarioContext);
+})();
 });
 
 Then("a request's records go to the call log in one call, handed to waitUntil so the answer doesn't wait", function () {
@@ -626,7 +626,7 @@ Then("a request's records go to the call log in one call, handed to waitUntil so
   await handle(new Request("https://storage.example/nope"), env, TENANTS, { waitUntil: (p) => handed.push(p) });
   await handed[1];
   assert.equal(env.CALL_LOG.sent.length, 1);
-})(scenarioContext);
+})();
 });
 
 Then("without the binding the records are let go, and nothing is written to the bucket", function () {
@@ -635,7 +635,7 @@ Then("without the binding the records are let go, and nothing is written to the 
   assert.equal((await upload("good", { "480.jpg": jpeg(480, 360) })).status, 200);
   assert.deepEqual(callLog.sink.pending, []);
   assert.ok(![...env.STORAGE.objects.keys()].some((k) => k.startsWith("calls-storage/")));
-})(scenarioContext);
+})();
 });
 
 Then("the calls-storage tenant is the call log's buffer: only ingest reads, writes or deletes through the API", function () {
@@ -643,7 +643,7 @@ Then("the calls-storage tenant is the call log's buffer: only ingest reads, writ
   assert.deepEqual(REAL_TENANTS["calls-storage"], {
     private: true, inbox: true, read: ["k8s:integrations/ingest"], write: ["k8s:integrations/ingest"], delete: ["k8s:integrations/ingest"],
   });
-})(scenarioContext);
+})();
 });
 
 Then("the convergence engine's buffers, need-states and calls-convergence-engine, only it and ingest write", function () {
@@ -654,7 +654,7 @@ Then("the convergence engine's buffers, need-states and calls-convergence-engine
       write: ["k8s:convergence/app", "k8s:integrations/ingest"], delete: ["k8s:integrations/ingest"],
     });
   }
-})(scenarioContext);
+})();
 });
 
 Then("the calls-release-controlplane tenant is a call-log buffer both release deployments write", function () {
@@ -663,5 +663,5 @@ Then("the calls-release-controlplane tenant is a call-log buffer both release de
     private: true, inbox: true, read: ["k8s:integrations/ingest"],
     write: ["k8s:release/app", "k8s:release-schryer/app", "k8s:integrations/ingest"], delete: ["k8s:integrations/ingest"],
   });
-})(scenarioContext);
+})();
 });

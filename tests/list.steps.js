@@ -60,10 +60,10 @@ Before("@list", function () {
     if (String(url) === "https://api.github.com/user") return Response.json({ login: "an-editor" });
     throw new Error(`unexpected fetch ${url}`);
   };
-})(scenarioContext);
+})();
 });
 After("@list", function () {
-  return (() => (globalThis.fetch = realFetch))(scenarioContext);
+  return (() => (globalThis.fetch = realFetch))();
 });
 
 const call = (path, { token = "editor", method = "GET", body } = {}) =>
@@ -96,7 +96,7 @@ Then("a reader lists the tenant's files with what their uploads said, and an upl
   });
   assert.deepEqual(files.find((f) => f.name === "notes.pdf").metadata, { kept: "false", by: "an-editor" });
   assert.deepEqual(env.STORAGE.asked.at(-1), { prefix: "deals/f/", limit: 1000, include: ["customMetadata"] });
-})(scenarioContext);
+})();
 });
 
 Then("a subject is cut to the label's length, and kept only when given", function () {
@@ -107,7 +107,7 @@ Then("a subject is cut to the label's length, and kept only when given", functio
   assert.equal(env.STORAGE.objects.get(`deals/f/${sent.id}/a.pdf`).customMetadata.subject, "s".repeat(200));
   const plain = await (await send("b.pdf")).json();
   assert.equal(env.STORAGE.objects.get(`deals/f/${plain.id}/b.pdf`).customMetadata.subject, undefined);
-})(scenarioContext);
+})();
 });
 
 Then("a listing comes a page at a time, and a prefix narrows it to an id or a name", function () {
@@ -123,7 +123,7 @@ Then("a listing comes a page at a time, and a prefix narrows it to an id or a na
   const one = await (await call(`/deals/list?prefix=f/${ids[0]}/`)).json();
   assert.deepEqual(one.files.map((f) => f.id), [ids[0]]);
   assert.equal((await call(`/deals/list?prefix=f/${ids[0].slice(0, 6)}`)).status, 200);
-})(scenarioContext);
+})();
 });
 
 Then("only a reader lists: no token, or a token that can't push, is refused", function () {
@@ -131,7 +131,7 @@ Then("only a reader lists: no token, or a token that can't push, is refused", fu
   assert.equal((await call("/deals/list?prefix=f/", { token: null })).status, 401);
   assert.equal((await call("/deals/list?prefix=f/", { token: "reader-only" })).status, 403);
   assert.equal((await call("/deals/list?prefix=f/", { token: "nobody" })).status, 403);
-})(scenarioContext);
+})();
 });
 
 Then("a prefix outside f\\/, a bad one, or a bad limit is refused", function () {
@@ -143,7 +143,7 @@ Then("a prefix outside f\\/, a bad one, or a bad limit is refused", function () 
   }
   assert.equal((await call("/deals/list?prefix=f/&limit=1001")).status, 400);
   assert.equal((await call("/deals/list?prefix=f/xyz")).status, 400);
-})(scenarioContext);
+})();
 });
 
 Then("a public tenant is never listed, nor a private one's files without \"files\"", function () {
@@ -154,5 +154,5 @@ Then("a public tenant is never listed, nor a private one's files without \"files
   const buffer = await call("/calls/list?prefix=f/", { token: null });
   assert.equal(buffer.status, 401);
   assert.equal(env.STORAGE.asked.length, 0);
-})(scenarioContext);
+})();
 });

@@ -73,12 +73,12 @@ Before("@inbox", function () {
     if (String(url) === `${ISSUER}/.well-known/jwks`) return Response.json({ keys: [jwk] });
     throw new Error(`unexpected fetch ${url}`);
   };
-})(scenarioContext);
+})();
 });
 After("@inbox", function () {
   return (() => {
   globalThis.fetch = realFetch;
-})(scenarioContext);
+})();
 });
 
 const request = async (path, { method = "GET", as = "Sustenaut/sender", body } = {}) =>
@@ -103,7 +103,7 @@ Then("a sender stores a file, and it can be read back, uncached", function () {
   assert.deepEqual(new Uint8Array(await got.arrayBuffer()), AVRO);
   assert.equal((await request(FILE, { method: "HEAD", as: "Sustenaut/reader" })).status, 200);
   assert.equal((await request("/calls/inbox/calls/none.avro", { as: "Sustenaut/reader" })).status, 404);
-})(scenarioContext);
+})();
 });
 
 Then("sending a name again replaces the file, so a retry is safe", function () {
@@ -111,7 +111,7 @@ Then("sending a name again replaces the file, so a retry is safe", function () {
   await request(FILE, { method: "PUT", body: AVRO });
   assert.equal((await request(FILE, { method: "PUT", body: AVRO })).status, 200);
   assert.equal(env.STORAGE.objects.size, 1);
-})(scenarioContext);
+})();
 });
 
 Then("a file must be what its folder holds", function () {
@@ -120,7 +120,7 @@ Then("a file must be what its folder holds", function () {
   assert.equal((await request("/calls/batches/job.json", { method: "PUT", body: "{not json" })).status, 400);
   assert.equal((await request("/calls/batches/job.json", { method: "PUT", body: '{"files":[]}' })).status, 200);
   assert.equal((await request("/calls/rejected/calls/a.avro", { method: "PUT", body: AVRO })).status, 200);
-})(scenarioContext);
+})();
 });
 
 Then("a name outside the folders, or a way out of them, isn't a buffer's", function () {
@@ -130,7 +130,7 @@ Then("a name outside the folders, or a way out of them, isn't a buffer's", funct
     assert.notEqual(answer.status, 200, path);
   }
   assert.equal(env.STORAGE.objects.size, 0);
-})(scenarioContext);
+})();
 });
 
 Then("a file over the limit is refused", function () {
@@ -138,7 +138,7 @@ Then("a file over the limit is refused", function () {
   const big = new Uint8Array(50 * 1024 * 1024 + 1);
   big.set(AVRO);
   assert.equal((await request(FILE, { method: "PUT", body: big })).status, 413);
-})(scenarioContext);
+})();
 });
 
 Then("listing gives the oldest name first, a page at a time", function () {
@@ -154,7 +154,7 @@ Then("listing gives the oldest name first, a page at a time", function () {
   const next = await (await request(`/calls/list?prefix=inbox/&limit=2&cursor=${first.cursor}`, { as: "Sustenaut/reader" })).json();
   assert.deepEqual(next.files.map((f) => f.name), ["inbox/calls/2026-11-02/172000-c.avro"]);
   assert.equal(next.cursor, null);
-})(scenarioContext);
+})();
 });
 
 Then("a listing is only of a buffer's folders, with a sensible limit", function () {
@@ -162,7 +162,7 @@ Then("a listing is only of a buffer's folders, with a sensible limit", function 
   for (const q of ["prefix=f/", "prefix=", "prefix=inbox/../", "prefix=inbox/&limit=0", "prefix=inbox/&limit=1001", "prefix=inbox/&limit=x"]) {
     assert.equal((await request(`/calls/list?${q}`, { as: "Sustenaut/reader" })).status, 400, q);
   }
-})(scenarioContext);
+})();
 });
 
 Then("only the delete list may delete, and writing isn't enough", function () {
@@ -173,7 +173,7 @@ Then("only the delete list may delete, and writing isn't enough", function () {
   assert.equal(env.STORAGE.objects.size, 1);
   assert.equal((await request(FILE, { method: "DELETE", as: "Sustenaut/ingest" })).status, 204);
   assert.equal(env.STORAGE.objects.size, 0);
-})(scenarioContext);
+})();
 });
 
 Then("a person's token can't delete, and no token can't do anything", function () {
@@ -185,7 +185,7 @@ Then("a person's token can't delete, and no token can't do anything", function (
     assert.equal((await request(FILE, { method, as: null, body: method === "PUT" ? AVRO : undefined })).status, 401, method);
   }
   assert.equal((await request("/calls/list?prefix=inbox/", { as: null })).status, 401);
-})(scenarioContext);
+})();
 });
 
 Then("one project's writers can't reach another's buffer", function () {
@@ -197,7 +197,7 @@ Then("one project's writers can't reach another's buffer", function () {
   assert.equal((await request(FILE, { method: "DELETE", as: stranger })).status, 403);
   assert.equal((await request("/calls/list?prefix=inbox/", { as: stranger })).status, 403);
   assert.equal((await request("/other/inbox/a.avro", { method: "PUT", body: AVRO })).status, 403);
-})(scenarioContext);
+})();
 });
 
 Then("a tenant without a buffer, or a public one, has none of this", function () {
@@ -205,13 +205,13 @@ Then("a tenant without a buffer, or a public one, has none of this", function ()
   assert.equal((await request("/plain/inbox/a.avro", { method: "PUT", body: AVRO })).status, 404);
   assert.equal((await request("/open/inbox/a.avro", { method: "PUT", body: AVRO })).status, 404);
   assert.equal((await request("/open/list?prefix=inbox/")).status, 404);
-})(scenarioContext);
+})();
 });
 
 Then("other methods on a buffer's file aren't allowed", function () {
   return (async () => {
   assert.equal((await request(FILE, { method: "POST", body: AVRO })).status, 405);
-})(scenarioContext);
+})();
 });
 
 // Whoever takes a buffer's files writes there too: a record of each load in batches/,
@@ -227,5 +227,5 @@ Then("every buffer's deleter may also write and read it", function () {
       assert.ok(t.read?.includes(principal), `${name}: ${principal} deletes but may not read`);
     }
   }
-})(scenarioContext);
+})();
 });
