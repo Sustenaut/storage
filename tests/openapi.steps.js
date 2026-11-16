@@ -1,10 +1,24 @@
 // openapi.json against the code: the spec is well formed, it names every route the
 // header of src/storage.js lists and no other, and the code answers every route in it.
-import { test, beforeEach, afterEach } from "node:test";
+import { After, Before, Then } from "@cucumber/cucumber";
+import { mock as nodeMock } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { handle } from "../src/storage.js";
 import SPEC from "../openapi.json" with { type: "json" };
+
+// What node:test gave each test as `t`: its mocks, restored when the
+// scenario ends, and the cleanups it registers with t.after().
+const cleanups = [];
+const scenarioContext = { mock: nodeMock, after: (fn) => cleanups.push(fn) };
+After("@openapi", async function () {
+  while (cleanups.length) await cleanups.pop()();
+  nodeMock.restoreAll();
+});
+
+// Strings in the order Array.prototype.sort gives them by default, said outright.
+const byCodeUnit = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
 
 const METHODS = ["get", "put", "post", "delete", "head", "patch", "options", "trace"];
 const operations = Object.entries(SPEC.paths).flatMap(([path, item]) =>
@@ -25,7 +39,8 @@ function* refs(node) {
   }
 }
 
-test("the spec is OpenAPI 3.1, every reference resolves, and every operation is complete", () => {
+Then("the spec is OpenAPI 3.1, every reference resolves, and every operation is complete", function () {
+  return (() => {
   assert.match(SPEC.openapi, /^3\.1\.\d+$/);
   assert.ok(SPEC.info.title && SPEC.info.version);
   for (const ref of refs(SPEC)) resolve(ref);
@@ -49,17 +64,20 @@ test("the spec is OpenAPI 3.1, every reference resolves, and every operation is 
     // Every {name} in the path is a required path parameter, and nothing else is.
     const params = [...(item.parameters || []), ...(op.parameters || [])].map((p) => (p.$ref ? resolve(p.$ref) : p));
     const inPath = params.filter((p) => p.in === "path");
-    assert.deepEqual(inPath.map((p) => p.name).sort(), [...path.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort(), where);
+    assert.deepEqual(inPath.map((p) => p.name).sort(byCodeUnit), [...path.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort(byCodeUnit), where);
     for (const p of inPath) assert.ok(p.required && p.schema && p.example !== undefined, `${where} ${p.name}`);
   }
+})();
 });
 
-test("the spec has every route the header of src/storage.js lists, and no other", async () => {
+Then("the spec has every route the header of src\\/storage.js lists, and no other", function () {
+  return (async () => {
   const source = await readFile(new URL("../src/storage.js", import.meta.url), "utf8");
   const header = source.slice(0, source.indexOf("\nimport "));
   const listed = [...header.matchAll(/^\/\/ {3}([A-Z]+(?:,[A-Z]+)*) (\/\S*)/gm)].flatMap(([, methods, path]) => methods.split(",").map((m) => `${m} ${path}`));
   assert.ok(listed.length > 10);
-  assert.deepEqual(operations.map((o) => `${o.method} ${o.path}`).sort(), [...new Set(listed)].sort());
+  assert.deepEqual(operations.map((o) => `${o.method} ${o.path}`).sort(byCodeUnit), [...new Set(listed)].sort(byCodeUnit));
+})();
 });
 
 // A tenant with everything, a GitHub token that may push to it, and an empty bucket:
@@ -75,15 +93,19 @@ const bucket = {
   list: async () => ({ objects: [], truncated: false }),
 };
 let realFetch;
-beforeEach(() => {
+Before("@openapi", function () {
+  return (() => {
   realFetch = globalThis.fetch;
   globalThis.fetch = async (url) => {
     if (String(url) === "https://api.github.com/repos/o/all") return Response.json({ permissions: { push: true } });
     if (String(url) === "https://api.github.com/user") return Response.json({ login: "editor" });
     throw new Error(`unexpected fetch ${url}`);
   };
+})();
 });
-afterEach(() => (globalThis.fetch = realFetch));
+After("@openapi", function () {
+  return (() => (globalThis.fetch = realFetch))();
+});
 
 function sample({ path, item, op }) {
   const params = [...(item.parameters || []), ...(op.parameters || [])].map((p) => (p.$ref ? resolve(p.$ref) : p));
@@ -99,17 +121,22 @@ async function answer(method, path) {
   return { status: response.status, error: body.error || "" };
 }
 
-for (const operation of operations) {
-  test(`the code answers ${operation.method} ${operation.path}`, async () => {
+Then("the code answers <operation.method> <operation.path>", async function () {
+  // Every case, in turn, as the loop of tests did.
+  for (const operation of operations) {
+    await (async () => {
     const { status, error } = await answer(operation.method, sample(operation));
     assert.ok(!error.startsWith("no such route"), `${status} ${error}`);
     assert.notEqual(status, 405);
-  });
-}
+  })();
+  }
+});
 
-test("and a request for no route says so", async () => {
+Then("and a request for no route says so", function () {
+  return (async () => {
   for (const [method, path] of [["GET", "/all/nothing"], ["POST", `/all/p/0123456789abcdef/960.jpg`], ["PUT", `/all/f/${"a".repeat(64)}/a.pdf`], ["PATCH", "/all/head/board"], ["POST", "/all/inbox/a.avro"], ["DELETE", "/all/files"]]) {
     const { status, error } = await answer(method, path);
     assert.ok(error.startsWith("no such route"), `${method} ${path}: ${status} ${error}`);
   }
+})();
 });

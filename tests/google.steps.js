@@ -1,8 +1,19 @@
 // Google identity tokens, as a Cloud Run service's metadata server gives them, with
 // Google's key set answered here, from a key made for the tests.
-import { test, beforeEach, afterEach } from "node:test";
+import { After, Before, Then } from "@cucumber/cucumber";
+import { mock as nodeMock } from "node:test";
 import assert from "node:assert/strict";
 import { verify, allowed, forgetKeys, AUDIENCE } from "../src/jwt.js";
+
+// What node:test gave each test as `t`: its mocks, restored when the
+// scenario ends, and the cleanups it registers with t.after().
+const cleanups = [];
+const scenarioContext = { mock: nodeMock, after: (fn) => cleanups.push(fn) };
+After("@google", async function () {
+  while (cleanups.length) await cleanups.pop()();
+  nodeMock.restoreAll();
+});
+
 
 const CERTS = "https://www.googleapis.com/oauth2/v3/certs";
 const RSA = { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" };
@@ -24,7 +35,8 @@ async function token(claims = {}, key = googleKey.privateKey) {
 }
 
 let realFetch, fetched;
-beforeEach(() => {
+Before("@google", function () {
+  return (() => {
   forgetKeys();
   fetched = [];
   realFetch = globalThis.fetch;
@@ -33,26 +45,34 @@ beforeEach(() => {
     if (String(url) === CERTS) return Response.json({ keys: [jwk] });
     throw new Error(`unexpected fetch ${url}`);
   };
+})();
 });
-afterEach(() => {
+After("@google", function () {
+  return (() => {
   globalThis.fetch = realFetch;
+})();
 });
 
 const refused = (t) => assert.rejects(verify(t), (err) => err.status === 401);
 
-test("a service account's identity token names its verified address", async () => {
+Then("a service account's identity token names its verified address", function () {
+  return (async () => {
   assert.equal(await verify(await token()), `gcp:${ACCOUNT}`);
   assert.equal(await verify(await token({ iss: "accounts.google.com" })), `gcp:${ACCOUNT}`);
   assert.deepEqual(fetched, [CERTS]);
+})();
 });
 
-test("a Google token for another audience, out of date, or not signed by Google is refused", async () => {
+Then("a Google token for another audience, out of date, or not signed by Google is refused", function () {
+  return (async () => {
   await refused(await token({ aud: "https://someone-else.example" }));
   await refused(await token({ exp: now() - 3600 }));
   await refused(await token({}, otherKey.privateKey));
+})();
 });
 
-test("only a verified service account's address is a principal", async () => {
+Then("only a verified service account's address is a principal", function () {
+  return (async () => {
   await refused(await token({ email_verified: false }));
   await refused(await token({ email_verified: "true" }));
   await refused(await token({ email: undefined }));
@@ -60,13 +80,16 @@ test("only a verified service account's address is a principal", async () => {
   await refused(await token({ email: "someone@gmail.com" }));
   await refused(await token({ email: "plan@sustenaut.iam.gserviceaccount.com.example" }));
   await refused(await token({ email: "Plan@sustenaut.iam.gserviceaccount.com" }));
+})();
 });
 
-test("a tenant's list names Google accounts exactly", () => {
+Then("a tenant's list names Google accounts exactly", function () {
+  return (() => {
   assert.ok(allowed(`gcp:${ACCOUNT}`, [`gcp:${ACCOUNT}`]));
   assert.ok(!allowed("gcp:other@sustenaut.iam.gserviceaccount.com", [`gcp:${ACCOUNT}`]));
   assert.ok(!allowed(`gcp:${ACCOUNT}`, ["github:Sustenaut/business-plan"]));
   // The part after @ is never read as a ref: an account of the same name in another project isn't ours.
   assert.ok(!allowed("gcp:plan@someone-else.iam.gserviceaccount.com", ["gcp:plan"]));
   assert.ok(!allowed("k8s:opportunity/app@x", ["k8s:opportunity/app"]));
+})();
 });

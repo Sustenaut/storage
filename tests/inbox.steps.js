@@ -1,9 +1,20 @@
 // Buffers: files in folders, listed and deleted, with tokens from a key made for the tests.
-import { test, beforeEach, afterEach } from "node:test";
+import { After, Before, Then } from "@cucumber/cucumber";
+import { mock as nodeMock } from "node:test";
 import assert from "node:assert/strict";
 import { handle } from "../src/storage.js";
 import { forgetKeys, AUDIENCE } from "../src/jwt.js";
 import REAL_TENANTS from "../tenants.json" with { type: "json" };
+
+// What node:test gave each test as `t`: its mocks, restored when the
+// scenario ends, and the cleanups it registers with t.after().
+const cleanups = [];
+const scenarioContext = { mock: nodeMock, after: (fn) => cleanups.push(fn) };
+After("@inbox", async function () {
+  while (cleanups.length) await cleanups.pop()();
+  nodeMock.restoreAll();
+});
+
 
 const ISSUER = "https://token.actions.githubusercontent.com";
 const RSA = { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" };
@@ -53,7 +64,8 @@ const TENANTS = {
 };
 
 let env, realFetch;
-beforeEach(() => {
+Before("@inbox", function () {
+  return (() => {
   env = { STORAGE: bucket() };
   forgetKeys();
   realFetch = globalThis.fetch;
@@ -61,9 +73,12 @@ beforeEach(() => {
     if (String(url) === `${ISSUER}/.well-known/jwks`) return Response.json({ keys: [jwk] });
     throw new Error(`unexpected fetch ${url}`);
   };
+})();
 });
-afterEach(() => {
+After("@inbox", function () {
+  return (() => {
   globalThis.fetch = realFetch;
+})();
 });
 
 const request = async (path, { method = "GET", as = "Sustenaut/sender", body } = {}) =>
@@ -76,7 +91,8 @@ const request = async (path, { method = "GET", as = "Sustenaut/sender", body } =
 const AVRO = new Uint8Array([0x4f, 0x62, 0x6a, 0x01, 0x07]);
 const FILE = "/calls/inbox/calls/2026-11-02/171800-web-abc.avro";
 
-test("a sender stores a file, and it can be read back, uncached", async () => {
+Then("a sender stores a file, and it can be read back, uncached", function () {
+  return (async () => {
   const stored = await request(FILE, { method: "PUT", body: AVRO });
   assert.equal(stored.status, 200);
   assert.deepEqual(await stored.json(), { name: "inbox/calls/2026-11-02/171800-web-abc.avro", size: 5 });
@@ -87,36 +103,46 @@ test("a sender stores a file, and it can be read back, uncached", async () => {
   assert.deepEqual(new Uint8Array(await got.arrayBuffer()), AVRO);
   assert.equal((await request(FILE, { method: "HEAD", as: "Sustenaut/reader" })).status, 200);
   assert.equal((await request("/calls/inbox/calls/none.avro", { as: "Sustenaut/reader" })).status, 404);
+})();
 });
 
-test("sending a name again replaces the file, so a retry is safe", async () => {
+Then("sending a name again replaces the file, so a retry is safe", function () {
+  return (async () => {
   await request(FILE, { method: "PUT", body: AVRO });
   assert.equal((await request(FILE, { method: "PUT", body: AVRO })).status, 200);
   assert.equal(env.STORAGE.objects.size, 1);
+})();
 });
 
-test("a file must be what its folder holds", async () => {
+Then("a file must be what its folder holds", function () {
+  return (async () => {
   assert.equal((await request(FILE, { method: "PUT", body: "not avro" })).status, 400);
   assert.equal((await request("/calls/batches/job.json", { method: "PUT", body: "{not json" })).status, 400);
   assert.equal((await request("/calls/batches/job.json", { method: "PUT", body: '{"files":[]}' })).status, 200);
   assert.equal((await request("/calls/rejected/calls/a.avro", { method: "PUT", body: AVRO })).status, 200);
+})();
 });
 
-test("a name outside the folders, or a way out of them, isn't a buffer's", async () => {
+Then("a name outside the folders, or a way out of them, isn't a buffer's", function () {
+  return (async () => {
   for (const path of ["/calls/inbox/a.json", "/calls/batches/a.avro", "/calls/other/a.avro", "/calls/inbox/../a.avro", "/calls/inbox/.hidden/a.avro"]) {
     const answer = await request(path, { method: "PUT", body: AVRO });
     assert.notEqual(answer.status, 200, path);
   }
   assert.equal(env.STORAGE.objects.size, 0);
+})();
 });
 
-test("a file over the limit is refused", async () => {
+Then("a file over the limit is refused", function () {
+  return (async () => {
   const big = new Uint8Array(50 * 1024 * 1024 + 1);
   big.set(AVRO);
   assert.equal((await request(FILE, { method: "PUT", body: big })).status, 413);
+})();
 });
 
-test("listing gives the oldest name first, a page at a time", async () => {
+Then("listing gives the oldest name first, a page at a time", function () {
+  return (async () => {
   for (const n of ["171800-b", "171600-a", "172000-c"]) {
     await request(`/calls/inbox/calls/2026-11-02/${n}.avro`, { method: "PUT", body: AVRO });
   }
@@ -128,24 +154,30 @@ test("listing gives the oldest name first, a page at a time", async () => {
   const next = await (await request(`/calls/list?prefix=inbox/&limit=2&cursor=${first.cursor}`, { as: "Sustenaut/reader" })).json();
   assert.deepEqual(next.files.map((f) => f.name), ["inbox/calls/2026-11-02/172000-c.avro"]);
   assert.equal(next.cursor, null);
+})();
 });
 
-test("a listing is only of a buffer's folders, with a sensible limit", async () => {
+Then("a listing is only of a buffer's folders, with a sensible limit", function () {
+  return (async () => {
   for (const q of ["prefix=f/", "prefix=", "prefix=inbox/../", "prefix=inbox/&limit=0", "prefix=inbox/&limit=1001", "prefix=inbox/&limit=x"]) {
     assert.equal((await request(`/calls/list?${q}`, { as: "Sustenaut/reader" })).status, 400, q);
   }
+})();
 });
 
-test("only the delete list may delete, and writing isn't enough", async () => {
+Then("only the delete list may delete, and writing isn't enough", function () {
+  return (async () => {
   await request(FILE, { method: "PUT", body: AVRO });
   assert.equal((await request(FILE, { method: "DELETE" })).status, 403);
   assert.equal((await request(FILE, { method: "DELETE", as: "Sustenaut/reader" })).status, 403);
   assert.equal(env.STORAGE.objects.size, 1);
   assert.equal((await request(FILE, { method: "DELETE", as: "Sustenaut/ingest" })).status, 204);
   assert.equal(env.STORAGE.objects.size, 0);
+})();
 });
 
-test("a person's token can't delete, and no token can't do anything", async () => {
+Then("a person's token can't delete, and no token can't do anything", function () {
+  return (async () => {
   await request(FILE, { method: "PUT", body: AVRO });
   const withGithubToken = await handle(new Request(`https://storage.example${FILE}`, { method: "DELETE", headers: { Authorization: "Bearer ghp_x" } }), env, TENANTS);
   assert.equal(withGithubToken.status, 401);
@@ -153,9 +185,11 @@ test("a person's token can't delete, and no token can't do anything", async () =
     assert.equal((await request(FILE, { method, as: null, body: method === "PUT" ? AVRO : undefined })).status, 401, method);
   }
   assert.equal((await request("/calls/list?prefix=inbox/", { as: null })).status, 401);
+})();
 });
 
-test("one project's writers can't reach another's buffer", async () => {
+Then("one project's writers can't reach another's buffer", function () {
+  return (async () => {
   await request(FILE, { method: "PUT", body: AVRO });
   const stranger = "Sustenaut/stranger";
   assert.equal((await request(FILE, { as: stranger })).status, 403);
@@ -163,22 +197,28 @@ test("one project's writers can't reach another's buffer", async () => {
   assert.equal((await request(FILE, { method: "DELETE", as: stranger })).status, 403);
   assert.equal((await request("/calls/list?prefix=inbox/", { as: stranger })).status, 403);
   assert.equal((await request("/other/inbox/a.avro", { method: "PUT", body: AVRO })).status, 403);
+})();
 });
 
-test("a tenant without a buffer, or a public one, has none of this", async () => {
+Then("a tenant without a buffer, or a public one, has none of this", function () {
+  return (async () => {
   assert.equal((await request("/plain/inbox/a.avro", { method: "PUT", body: AVRO })).status, 404);
   assert.equal((await request("/open/inbox/a.avro", { method: "PUT", body: AVRO })).status, 404);
   assert.equal((await request("/open/list?prefix=inbox/")).status, 404);
+})();
 });
 
-test("other methods on a buffer's file aren't allowed", async () => {
+Then("other methods on a buffer's file aren't allowed", function () {
+  return (async () => {
   assert.equal((await request(FILE, { method: "POST", body: AVRO })).status, 405);
+})();
 });
 
 // Whoever takes a buffer's files writes there too: a record of each load in batches/,
 // and a file that won't load moved to rejected/. So every principal on a buffer's
 // delete list is on its write list, and only its readers and writers may delete.
-test("every buffer's deleter may also write and read it", () => {
+Then("every buffer's deleter may also write and read it", function () {
+  return (() => {
   const buffers = Object.entries(REAL_TENANTS).filter(([, t]) => t.private && t.inbox);
   assert.ok(buffers.length > 0);
   for (const [name, t] of buffers) {
@@ -187,4 +227,5 @@ test("every buffer's deleter may also write and read it", () => {
       assert.ok(t.read?.includes(principal), `${name}: ${principal} deletes but may not read`);
     }
   }
+})();
 });

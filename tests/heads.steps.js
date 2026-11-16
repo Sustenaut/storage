@@ -1,10 +1,21 @@
 // Named heads, with the bucket's conditional writes as R2 does them and tokens
 // from a key made for the tests.
-import { test, beforeEach, afterEach } from "node:test";
+import { After, Before, Then } from "@cucumber/cucumber";
+import { mock as nodeMock } from "node:test";
 import assert from "node:assert/strict";
 import { handle } from "../src/storage.js";
 import { forgetKeys, AUDIENCE } from "../src/jwt.js";
 import REAL_TENANTS from "../tenants.json" with { type: "json" };
+
+// What node:test gave each test as `t`: its mocks, restored when the
+// scenario ends, and the cleanups it registers with t.after().
+const cleanups = [];
+const scenarioContext = { mock: nodeMock, after: (fn) => cleanups.push(fn) };
+After("@heads", async function () {
+  while (cleanups.length) await cleanups.pop()();
+  nodeMock.restoreAll();
+});
+
 
 const ISSUER = "https://token.actions.githubusercontent.com";
 const RSA = { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" };
@@ -57,7 +68,8 @@ const TENANTS = {
 };
 
 let env, realFetch;
-beforeEach(() => {
+Before("@heads", function () {
+  return (() => {
   env = { STORAGE: bucket() };
   forgetKeys();
   realFetch = globalThis.fetch;
@@ -65,9 +77,12 @@ beforeEach(() => {
     if (String(url) === `${ISSUER}/.well-known/jwks`) return Response.json({ keys: [jwk] });
     throw new Error(`unexpected fetch ${url}`);
   };
+})();
 });
-afterEach(() => {
+After("@heads", function () {
+  return (() => {
   globalThis.fetch = realFetch;
+})();
 });
 
 const request = async (path, { method = "GET", as = WRITE, ref, headers = {}, body, tenants = TENANTS } = {}) =>
@@ -94,7 +109,8 @@ const move = (hash, headers, tenant = "snaps", extra = {}) =>
 const first = { "If-None-Match": "*" };
 const from = (hash) => ({ "If-Match": `"${hash}"` });
 
-test("a head serves the file it points at, with its hash as the ETag, uncached", async () => {
+Then("a head serves the file it points at, with its hash as the ETag, uncached", function () {
+  return (async () => {
   const hash = await store('{"a":1}');
   const moved = await move(hash, first);
   assert.equal(moved.status, 200);
@@ -106,26 +122,32 @@ test("a head serves the file it points at, with its hash as the ETag, uncached",
   assert.equal(r.headers.get("Content-Type"), "application/json");
   assert.match(r.headers.get("Cache-Control"), /no-store/);
   assert.match(r.headers.get("Content-Security-Policy"), /sandbox/);
+})();
 });
 
-test("HEAD gives the hash without the file", async () => {
+Then("HEAD gives the hash without the file", function () {
+  return (async () => {
   const hash = await store("{}");
   await move(hash, first);
   const r = await request("/snaps/head/board", { method: "HEAD" });
   assert.equal(r.headers.get("ETag"), `"${hash}"`);
   assert.equal(await r.text(), "");
+})();
 });
 
-test("a head that has never moved is not found, and takes only If-None-Match: *", async () => {
+Then("a head that has never moved is not found, and takes only If-None-Match: *", function () {
+  return (async () => {
   const hash = await store("{}");
   assert.equal((await request("/snaps/head/board")).status, 404);
   assert.equal((await request("/snaps/head/board/log")).status, 404);
   assert.equal((await move(hash, {})).status, 412);
   assert.equal((await move(hash, from(hash))).status, 412);
   assert.equal((await move(hash, first)).status, 200);
+})();
 });
 
-test("moving needs the current hash, and answers 412 otherwise", async () => {
+Then("moving needs the current hash, and answers 412 otherwise", function () {
+  return (async () => {
   const a = await store('{"a":1}');
   const b = await store('{"b":1}');
   const c = await store('{"c":1}');
@@ -136,18 +158,22 @@ test("moving needs the current hash, and answers 412 otherwise", async () => {
   assert.equal((await move(b, from(a))).status, 200);
   assert.equal((await move(c, from(a))).status, 412, "a is no longer current");
   assert.equal((await request("/snaps/head/board")).headers.get("ETag"), `"${b}"`);
+})();
 });
 
-test("If-Match takes a bare or weak hash as well as a quoted one", async () => {
+Then("If-Match takes a bare or weak hash as well as a quoted one", function () {
+  return (async () => {
   const a = await store('{"a":1}');
   const b = await store('{"b":1}');
   const c = await store('{"c":1}');
   await move(a, first);
   assert.equal((await move(b, { "If-Match": a })).status, 200);
   assert.equal((await move(c, { "If-Match": `W/"${b}"` })).status, 200);
+})();
 });
 
-test("of two moves from the same place, only one wins", async () => {
+Then("of two moves from the same place, only one wins", function () {
+  return (async () => {
   const a = await store('{"a":1}');
   const b = await store('{"b":1}');
   const c = await store('{"c":1}');
@@ -161,9 +187,11 @@ test("of two moves from the same place, only one wins", async () => {
   };
   assert.equal((await move(b, from(a))).status, 412);
   assert.equal((await request("/snaps/head/board")).headers.get("ETag"), `"${c}"`);
+})();
 });
 
-test("two first moves at once: only one wins", async () => {
+Then("two first moves at once: only one wins", function () {
+  return (async () => {
   const a = await store('{"a":1}');
   const b = await store('{"b":1}');
   let racing = false;
@@ -174,9 +202,11 @@ test("two first moves at once: only one wins", async () => {
   };
   assert.equal((await move(a, first)).status, 412);
   assert.equal((await request("/snaps/head/board")).headers.get("ETag"), `"${b}"`);
+})();
 });
 
-test("the log lists every place, newest first, with time and principal", async (t) => {
+Then("the log lists every place, newest first, with time and principal", function () {
+  return (async (t) => {
   t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-30T10:00:00Z") });
   const a = await store('{"a":1}');
   const b = await store('{"b":1}');
@@ -197,9 +227,11 @@ test("the log lists every place, newest first, with time and principal", async (
       { hash: a, time: "2026-10-30T10:00:00.000Z", principal },
     ],
   });
+})(scenarioContext);
 });
 
-test("a move that fails loses nothing and adds nothing false to the log", async () => {
+Then("a move that fails loses nothing and adds nothing false to the log", function () {
+  return (async () => {
   const a = await store('{"a":1}');
   const b = await store('{"b":1}');
   await move(a, first);
@@ -215,35 +247,43 @@ test("a move that fails loses nothing and adds nothing false to the log", async 
   assert.equal((await move(b, from(a))).status, 200);
   const after = await (await request("/snaps/head/board/log")).json();
   assert.deepEqual(after.log.map((e) => e.hash), [b, a]);
+})();
 });
 
-test("moving to where it already points changes nothing", async () => {
+Then("moving to where it already points changes nothing", function () {
+  return (async () => {
   const a = await store("{}");
   await move(a, first);
   assert.equal((await move(a, from(a))).status, 200);
   const { log } = await (await request("/snaps/head/board/log")).json();
   assert.equal(log.length, 1);
+})();
 });
 
-test("a head can only point at a stored file", async () => {
+Then("a head can only point at a stored file", function () {
+  return (async () => {
   assert.equal((await move("0".repeat(64), first)).status, 404);
   for (const body of ["{}", "not json", "null", '{"hash":"../x"}', '{"hash":1}']) {
     const r = await request("/snaps/head/board", { method: "PUT", headers: first, body });
     assert.equal(r.status, 400, body);
   }
   assert.equal((await request("/snaps/head/board")).status, 404);
+})();
 });
 
-test("each name is its own head", async () => {
+Then("each name is its own head", function () {
+  return (async () => {
   const a = await store('{"a":1}');
   await move(a, first);
   assert.equal((await request("/snaps/head/other")).status, 404);
   assert.equal((await request("/snaps/head/Bad%20Name")).status, 404);
   assert.equal((await request("/snaps/head/board/log/x")).status, 404);
   assert.equal((await request("/snaps/head/board/log", { method: "PUT", headers: first, body: "{}" })).status, 404);
+})();
 });
 
-test("only the write list moves a head, and only readers read one", async () => {
+Then("only the write list moves a head, and only readers read one", function () {
+  return (async () => {
   const a = await store("{}");
   assert.equal((await move(a, first, "snaps", { as: "Sustenaut/reader" })).status, 403);
   assert.equal((await move(a, first, "snaps", { ref: "refs/heads/other" })).status, 403);
@@ -252,17 +292,21 @@ test("only the write list moves a head, and only readers read one", async () => 
   assert.equal((await request("/snaps/head/board", { as: "Sustenaut/stranger" })).status, 403);
   assert.equal((await request("/snaps/head/board", { as: null })).status, 401);
   assert.equal((await request("/snaps/head/board/log", { as: "Sustenaut/stranger" })).status, 403);
+})();
 });
 
-test("a tenant without heads, or a public one, has none", async () => {
+Then("a tenant without heads, or a public one, has none", function () {
+  return (async () => {
   const hash = await store("{}", "board.json", "noheads");
   assert.equal((await move(hash, first, "noheads")).status, 404);
   assert.equal((await request("/noheads/head/board")).status, 404);
   assert.equal((await move(hash, first, "open")).status, 404);
   assert.equal((await request("/open/head/board", { as: null })).status, 404);
+})();
 });
 
-test("each release tenant is read by its own deployment alone", () => {
+Then("each release tenant is read by its own deployment alone", function () {
+  return (() => {
   const sustenaut = "github:Sustenaut/release-controlplane@refs/heads/main";
   const schryer = "github:schryer/release-controlplane@refs/heads/main";
   for (const [name, reader, writers] of [["release-sustenaut", "k8s:release/app", [sustenaut]], ["release-schryer", "k8s:release-schryer/app", [schryer]]]) {
@@ -275,19 +319,23 @@ test("each release tenant is read by its own deployment alone", () => {
     assert.equal(t.files.kept, true);
     assert.equal(t.repository, undefined);
   }
+})();
 });
 
-test("one deployment's token can't read the other's tenant", () => {
+Then("one deployment's token can't read the other's tenant", function () {
+  return (() => {
   const can = (tenant, principal) => [...REAL_TENANTS[tenant].read, ...REAL_TENANTS[tenant].write].includes(principal);
   assert.equal(can("release-sustenaut", "k8s:release-schryer/app"), false);
   assert.equal(can("release-schryer", "k8s:release/app"), false);
   assert.equal(can("release-sustenaut", "github:schryer/release-controlplane@refs/heads/main"), false);
   assert.equal(can("release-schryer", "github:Sustenaut/release-controlplane@refs/heads/main"), false);
+})();
 });
 
 const PLANE = ["observability", "notifier", "integrations", "release-controlplane", "opportunity-site", "notebooks", "auth"];
 
-test("the plane tenant is read and written by each plane repository's main and the convergence engine alone", () => {
+Then("the plane tenant is read and written by each plane repository's main and the convergence engine alone", function () {
+  return (() => {
   const t = REAL_TENANTS.plane;
   const mains = [...PLANE.map((r) => `github:Sustenaut/${r}@refs/heads/main`), "k8s:convergence/app"];
   assert.equal(t.private, true);
@@ -296,9 +344,11 @@ test("the plane tenant is read and written by each plane repository's main and t
   assert.deepEqual(t.write, mains);
   assert.deepEqual(t.files, { types: ["json"], max_bytes: 1048576, kept: true });
   assert.equal(t.repository, undefined);
+})();
 });
 
-test("one plane repository's main writes a head another reads; others can't", async () => {
+Then("one plane repository's main writes a head another reads; others can't", function () {
+  return (async () => {
   const plane = (path, opts = {}) => request(path, { as: "Sustenaut/observability", tenants: REAL_TENANTS, ...opts });
   const upload = (text, opts = {}, name = "state.json") => {
     const form = new FormData();
@@ -322,4 +372,5 @@ test("one plane repository's main writes a head another reads; others can't", as
   assert.equal((await upload("{}", { ref: "refs/heads/feature" })).status, 403);
   assert.equal((await upload("{}", {}, "state.pdf")).status, 415);
   assert.equal((await upload(`"${"x".repeat(1048576)}"`)).status, 413);
+})();
 });
