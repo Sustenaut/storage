@@ -3,7 +3,7 @@
 # wrangler.toml binds.
 #
 # The Pages project is the storage site in schryer/business-plan's
-# pubkit.json. The token is the Actions secret CLOUDFLARE_GITHUB_API_TOKEN,
+# pubrules.json. The token is the Actions secret CLOUDFLARE_GITHUB_API_TOKEN,
 # which can only edit Pages; the account is the Actions variable
 # CLOUDFLARE_ACCOUNT_ID. It stays off until those and the bucket exist
 # (README.md, "Setting it up"): then set the repository variable

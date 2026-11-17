@@ -191,7 +191,7 @@ Then("a mirrored wheel is at the address its lock's sha256 names, for anyone, an
   return (async () => {
   const wheel = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 1, 2, 3, 4]);
   const sha = Buffer.from(await crypto.subtle.digest("SHA-256", wheel)).toString("hex");
-  const name = "pubkit-0.31.3-py3-none-any.whl";
+  const name = "pubrules-0.31.3-py3-none-any.whl";
   const response = await put("wheels", await token("Sustenaut/storage"), name, wheel);
   assert.equal(response.status, 200);
   const file = await response.json();
@@ -203,7 +203,7 @@ Then("a mirrored wheel is at the address its lock's sha256 names, for anyone, an
   assert.deepEqual(new Uint8Array(await read.arrayBuffer()), wheel);
 
   assert.equal((await put("wheels", await token("Sustenaut/storage", "refs/heads/x"), name, wheel)).status, 403, "only main");
-  assert.equal((await put("wheels", await token("Sustenaut/pubkit"), name, wheel)).status, 403, "the packages don't write it");
+  assert.equal((await put("wheels", await token("Sustenaut/pubrules"), name, wheel)).status, 403, "the packages don't write it");
   assert.equal((await put("wheels", "good", name, wheel)).status, 401, "nor do GitHub tokens");
   assert.equal((await put("wheels", await token("Sustenaut/storage"), name, pdf())).status, 400, "a .whl must be a zip");
   assert.equal((await put("wheels", await token("Sustenaut/storage"), "a.pdf", pdf())).status, 415);
