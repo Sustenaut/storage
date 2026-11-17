@@ -280,8 +280,8 @@ already there. A file here is named by its SHA-256, the same hash a lock
 pins, so a lock line alone gives the fallback address:
 
 ```
-https://github.com/Sustenaut/pubkit/releases/download/v0.31.3/pubkit-0.31.3-py3-none-any.whl --hash=sha256:adb0…
-https://storage.sustenaut.eu/wheels/f/adb0…/pubkit-0.31.3-py3-none-any.whl
+https://github.com/Sustenaut/pubrules/releases/download/v0.31.3/pubrules-0.31.3-py3-none-any.whl --hash=sha256:adb0…
+https://storage.sustenaut.eu/wheels/f/adb0…/pubrules-0.31.3-py3-none-any.whl
 ```
 
 Storage only has to be there, never trusted: pip and uv still check the
@@ -389,7 +389,7 @@ deploy`) run the same wrangler; move it in both repositories together.
    Cloudflare account, either in the dashboard or with
    `npx --no-install wrangler r2 bucket create sustenaut-storage` after `npm ci`.
 2. **The Pages project and the name.** These come from the `storage` site in
-   Sustenaut/business-plan's `pubkit.json`, applied by its infra like
+   Sustenaut/business-plan's `pubrules.json`, applied by its infra like
    maps.sustenaut.eu.
 3. **The deploy's secrets.** In this repository's Actions settings, add the
    secret `CLOUDFLARE_GITHUB_API_TOKEN` (the same Pages-only token maps
@@ -398,5 +398,5 @@ deploy`) run the same wrangler; move it in both repositories together.
    as well.
 4. **Turn it on.** Set the repository variable `STORAGE_DEPLOY` to `on`.
    The next push to main deploys.
-5. **Protect main.** Run `pubkit protect Sustenaut/storage` as a repository
+5. **Protect main.** Run `pubrules protect Sustenaut/storage` as a repository
    admin.

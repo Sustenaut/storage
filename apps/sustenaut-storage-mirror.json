@@ -7,7 +7,7 @@
     "contents": "read",
     "metadata": "read"
   },
-  "pubkit": {
+  "pubrules": {
     "org": "Sustenaut",
     "bitwarden_project": "Sustenaut",
     "secret_prefix": "sustenaut-storage-mirror"

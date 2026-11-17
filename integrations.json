@@ -44,7 +44,7 @@
       "plugin": "github.app-token",
       "paths": [
         ".github/workflows/mirror.yml",
-        "pubkit.json",
+        "pubrules.json",
         "scripts/go-live-mirror-app.sh"
       ],
       "mode": "required"
