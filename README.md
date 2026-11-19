@@ -108,6 +108,8 @@ without `kept` doesn't unkeep it.
 | `notifier` (private) | Sustenaut/notifier's state: which signals it has posted | small json files, written and read by the notifier's pod alone (`k8s:notifier/app`); a `posted` head names the latest, moved with `If-Match` so two runs can't both win. It writes a new file only when it has posted something. |
 | `ci-usage` (private) | CI's wait times and compute load, a buffer (see Buffers below): one row per finished GitHub Actions job, and the k3s server's usage every two minutes | written by the integrations ci-jobs poller (`k8s:integrations/ci-jobs`) and the sampler beside the runners (`k8s:ci/usage`), loaded into BigQuery's `platform.ci_jobs` and `platform.cluster_usage` and deleted by the integrations ingest pod alone (`k8s:integrations/ingest`) |
 | `ci-jobs` (private) | the ci-jobs poller's state: which finished jobs it has written | small json files, written and read by the poller's pod alone (`k8s:integrations/ci-jobs`); a `written` head names the latest, moved with `If-Match` so two runs can't both win |
+| `documents` (private) | Sustenaut/docs' approved document renders | pdf and txt renders, stored by their SHA-256 and named in each doc's signed version publet; all kept; uploaded by docs' editors from their own machines (`pubdoc approve`) and read by docs' main (`pubdoc verify --remote`) |
+| `publet-design` | Sustenaut/publet's design documents | the approved pdf and txt renders of its `design/` project, public like the repository; all kept, never cleaned; uploaded by publet's editors (`pubdoc approve`) |
 | `facts` (private) | Sustenaut/business-plan's facts registry | its signed publet objects (cbor), all kept; uploaded by its editors from their own machines and read by business-plan's main |
 | `sources` (private, its pdfs public) | Sustenaut/business-plan's sources corpus | papers (pdf) whose licence allows it, which come from elsewhere and stay public at the addresses signed records name; signed publet objects (cbor, named by their SHA-256 like any file) and their indexes (json); all kept, never cleaned; read by business-plan's main and the review site's pod (`k8s:review/app`), which loads them at start; a `gathered` head, moved by business-plan's editors, names the index of the objects it loads |
 | `pypi` | the PyPI files the requirements locks pin, copied by the mirror workflow, served as a simple repository index (see The mirror below) | whl, gz and zip files, public, all kept, never cleaned; written by Sustenaut/storage's main alone |
@@ -152,7 +154,7 @@ client of auth.sustenaut.eu, is ready in `src/jwt.js`, waiting for its
 issuer to be turned on. Personal tokens and GitHub App tokens are not taken by a private tenant,
 and it needs no `repository`, unless it says `"editors": true`: then a GitHub
 token that may push to its `repository` may read and write it too, checked
-with GitHub (and kept a minute, as above). `sources`, `facts`, `publications` and `opportunity` do, because people upload
+with GitHub (and kept a minute, as above). `sources`, `facts`, `publications`, `documents` and `opportunity` do, because people upload
 from their own machines (`make sources-upload` and the like), where no workflow
 token exists. Nothing is public until an explicit publishing step puts it
 somewhere public, with one exception: `"public_types"` lists file types of a
