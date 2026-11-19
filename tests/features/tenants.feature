@@ -45,6 +45,25 @@ Feature: tenants.json: who reads and writes each tenant, and what it keeps
     And the result's "files.kept" is "true"
     And the result does not include "public_types"
 
+  Scenario: The documents tenant is private: Sustenaut/docs's editors upload approved renders, its main reads them, kept, none public
+    When tenants.json's "documents" is read
+    Then the result's "private" is "true"
+    And the result's "editors" is "true"
+    And the result's "repository" is "Sustenaut/docs"
+    And the result's "read" is '["github:Sustenaut/docs@refs/heads/main"]'
+    And the result's "files" is '{"types": ["pdf", "txt"], "max_bytes": 26214400, "kept": true}'
+    And the result does not include "public_types"
+    And the result does not include "write"
+    And the result does not include "in_use"
+
+  Scenario: The publet-design tenant is public: Sustenaut/publet's editors upload its design renders, kept, never cleaned
+    When tenants.json's "publet-design" is read
+    Then the result does not include "private"
+    And the result's "repository" is "Sustenaut/publet"
+    And the result's "files" is '{"types": ["pdf", "txt"], "max_bytes": 26214400, "kept": true}'
+    And the result does not include "write"
+    And the result does not include "in_use"
+
   Scenario: The sources tenant is private: business-plan's main and the review pod read it, its editors upload and move its heads, only raw papers are public, kept and never cleaned
     When tenants.json's "sources" is read
     Then the result's "private" is "true"

@@ -408,5 +408,32 @@
       ],
       "max_bytes": 1048576
     }
+  },
+  "documents": {
+    "private": true,
+    "editors": true,
+    "repository": "Sustenaut/docs",
+    "read": [
+      "github:Sustenaut/docs@refs/heads/main"
+    ],
+    "files": {
+      "types": [
+        "pdf",
+        "txt"
+      ],
+      "max_bytes": 26214400,
+      "kept": true
+    }
+  },
+  "publet-design": {
+    "repository": "Sustenaut/publet",
+    "files": {
+      "types": [
+        "pdf",
+        "txt"
+      ],
+      "max_bytes": 26214400,
+      "kept": true
+    }
   }
 }
