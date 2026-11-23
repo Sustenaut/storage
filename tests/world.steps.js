@@ -275,3 +275,16 @@ Given("GitHub lists the installation's repositories:", function (table) {
 Given("GitHub answers {int} for the installation's repositories", function (status) {
   return gitHubAnswers(this, "GET /installation/repositories", status, "{}");
 });
+
+// --- The ingest pod's notices ---------------------------------------------------------
+
+Given("the project's secret INGEST_NOTIFY_KEY is {string}", function (key) {
+  this.env.INGEST_NOTIFY_KEY = key;
+  // What it says in its log, kept for "the log says".
+  this.logged = [];
+  mock.method(console, "error", (...parts) => this.logged.push(parts.join(" ")));
+});
+
+Given("the project's INGEST_NOTIFY_URL is {string}", function (url) {
+  this.env.INGEST_NOTIFY_URL = url;
+});

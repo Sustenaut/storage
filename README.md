@@ -129,6 +129,18 @@ place in it.
 | `batches/` | json: which files the current load has |
 | `rejected/<table>/<date>/` | Avro files that couldn't load, for a person |
 
+Once a file is taken into `inbox/`, the service tells the ingest pod of it, after the
+answer: `POST https://integrations.sustenaut.eu/ingest/notify` (or the project's
+`INGEST_NOTIFY_URL`), `{"tenant", "name", "size"}`, with `X-Ingest-Timestamp` (Unix
+seconds) and `X-Ingest-Signature: sha256=<hex>`, the HMAC-SHA256 under the project's
+secret `INGEST_NOTIFY_KEY` of the timestamp, a dot and the body (`src/notify.js`). The pod
+then reads that file alone instead of listing every buffer. A notice leaves no call record,
+as one would make another for `calls-storage`, and one that fails is only said in the log:
+the pod's sweep finds the file. Without the secret no notice is sent. A person sets it,
+the value of Bitwarden's `INGEST_NOTIFY_KEY`, with
+`wrangler pages secret put INGEST_NOTIFY_KEY --project-name sustenaut-storage`.
+`batches/` and `rejected/` are the pod's own, and nothing is told of them.
+
 A file is named by its sender and is checked as Avro or JSON, up to 50 MB. Sending a name
 again replaces the file, which is how a sender retries, as the name holds a hash of its
 content. Anyone on `read` or `write` may read and list; `write` may also store. Only a

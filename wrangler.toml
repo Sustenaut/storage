@@ -2,7 +2,10 @@
 # its one page, functions/ the service (src/storage.js), and STORAGE is
 # its R2 bucket. CALL_LOG is integrations' call-log Durable Object
 # (Sustenaut/integrations workers/call-log), which takes its call records.
-# The project has no secrets.
+# Its one secret is INGEST_NOTIFY_KEY, which signs its notices to the ingest pod of
+# files taken into a buffer's inbox (src/notify.js): a person sets it, the value of
+# Bitwarden's INGEST_NOTIFY_KEY, with `wrangler pages secret put INGEST_NOTIFY_KEY
+# --project-name sustenaut-storage`. Without it, no notice is sent.
 name = "sustenaut-storage"
 pages_build_output_dir = "public"
 compatibility_date = "2026-10-01"
