@@ -30,6 +30,7 @@ export const SERVICES = {
   "api.github.com": "GitHub",
   "token.actions.githubusercontent.com": "GitHub's OIDC issuer",
   "www.googleapis.com": "Google",
+  "integrations.sustenaut.eu": "the ingest pod",
 };
 const serviceOf = (host) => SERVICES[host] ?? host;
 
@@ -69,4 +70,5 @@ After(function () {
   globalThis.fetch = realFetch;
   globalThis.caches = realCaches;
   mock.timers.reset();
+  mock.restoreAll();
 });

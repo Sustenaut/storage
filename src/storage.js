@@ -99,9 +99,12 @@
 // inbox/ and rejected/ hold Avro, batches/ holds json. Sending the same name again
 // replaces the file, which is how a sender retries, as its name holds a hash of it.
 // Deleting takes a place on the tenant's "delete" list, not just its "write" list.
+// Once a file is taken into a buffer's inbox/, the ingest pod is told of it, after the
+// answer and without a call record (notify.js), so it reads that file without listing.
 
 import { Caller, CallLogSink, Unavailable } from "@sustenaut/integrations/caller.js";
 import { isJwt, verify, allowed } from "./jwt.js";
+import { notify } from "./notify.js";
 import TENANTS from "../tenants.json" with { type: "json" };
 
 export const WIDTHS = [480, 960, 1600];
@@ -136,8 +139,9 @@ const ALLOWED_FOR_MS = 60e3;
 const ALLOWED_MAX = 1000;
 
 // This service's calls and their records, sent to the request at hand's CALL_LOG
-// binding, as a Worker's bindings come with each request.
-const current = { env: null };
+// binding, as a Worker's bindings come with each request; and the request's notices to
+// the ingest pod, sent with them after the answer.
+const current = { env: null, notices: [] };
 export const callLog = {
   sink: new CallLogSink({ sender: "storage", namespace: () => current.env.CALL_LOG }),
 };
@@ -195,7 +199,7 @@ export async function handle(request, env, tenants = TENANTS, { waitUntil } = {}
   } finally {
     // Without the binding (the tests' own environments) the records are let go.
     if (!env.CALL_LOG) callLog.sink.pending = [];
-    const sent = callLog.sink.send();
+    const sent = Promise.all([callLog.sink.send(), ...current.notices.splice(0)]);
     if (waitUntil) waitUntil(sent);
     else await sent;
   }
@@ -354,6 +358,7 @@ async function buffer(request, env, url, tenantId, tenant) {
     const kind = FILE_TYPES[extension(key)];
     if (!kind.check(bytes)) throw status(400, `${route[2]} is not ${extension(key)}`);
     await env.STORAGE.put(key, bytes);
+    if (route[3] === "inbox") current.notices.push(notify(env, tenantId, route[2], bytes.length));
     return json({ name: route[2], size: bytes.length }, 200, headers);
   }
   if (request.method === "GET" || request.method === "HEAD") {

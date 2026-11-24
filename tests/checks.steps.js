@@ -6,6 +6,7 @@ import { Then } from "@cucumber/cucumber";
 import assert from "node:assert/strict";
 import { allowedCache, callLog } from "../src/storage.js";
 import { hex } from "./support/samples.js";
+import { signature } from "../src/notify.js";
 
 const byCodeUnit = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const lines = (doc) => String(doc).split("\n").map((l) => l.trim()).filter(Boolean);
@@ -127,4 +128,38 @@ Then("the refusal's {string} is {string}", function (name, value) {
   assert.ok(refused, "it was not refused");
   this.pubtest.refusalRead = true;
   assert.equal(String(refused.error?.[name]), value);
+});
+
+// --- The ingest pod's notices ---------------------------------------------------------
+
+// Each notice the ingest pod was sent: its path, its body, and whether its signature is
+// the key's over its timestamp and body, the timestamp within a second of now.
+Then("the ingest pod was told, signed with {string}, of:", async function (key, doc) {
+  await Promise.all(this.handed ?? []);
+  const told = [];
+  for (const r of this.pubtest.fakes["the ingest pod"]?.requests ?? []) {
+    const seconds = r.headers["x-ingest-timestamp"];
+    told.push({ request: `${r.method} ${r.path}`, body: JSON.parse(r.body),
+      signed: r.headers["x-ingest-signature"] === await signature(key, seconds, r.body),
+      now: Math.abs(Number(seconds) - Date.now() / 1000) <= 1 });
+  }
+  assert.deepEqual(told, JSON.parse(doc));
+});
+
+Then("nothing was sent to the ingest pod", async function () {
+  await Promise.all(this.handed ?? []);
+  assert.deepEqual(this.sent.filter((s) => s.name === "the ingest pod"), []);
+});
+
+Then("{int} notice was sent to the ingest pod, with a timeout", async function (n) {
+  await Promise.all(this.handed ?? []);
+  const sent = this.sent.filter((s) => s.name === "the ingest pod");
+  assert.equal(sent.length, n);
+  assert.ok(sent.every((s) => s.timeout));
+});
+
+// What the service said in its log (console.error), kept by the Given before it.
+Then("the log says {string}", async function (text) {
+  await Promise.all(this.handed ?? []);
+  assert.ok((this.logged ?? []).some((line) => line.includes(text)), `the log says ${JSON.stringify(this.logged)}`);
 });
