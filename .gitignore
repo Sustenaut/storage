@@ -2,7 +2,7 @@ node_modules/
 coverage/
 _site/
 data/
-.venv/
+.venv
 .pubrules/
 .cache/
 __pycache__/
